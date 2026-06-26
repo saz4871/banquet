@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grand Banquet | Discover Premium Luxury</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Poppins',sans-serif; }
+        body { background: #070b14; color:white; overflow-x:hidden; }
+
+        /* HERO JUMBOTRON */
+        .hero {
+            height: 65vh; display: flex; justify-content: center; align-items: center; text-align: center;
+            background: linear-gradient(rgba(7, 11, 20, 0.5), rgba(7, 11, 20, 0.9)), 
+                        url('https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1600&q=80') center/cover;
+            padding: 20px; position: relative;
+        }
+        .hero-content h1 { font-size: 3.5rem; color: #ffd700; margin-bottom: 10px; font-weight: 700; letter-spacing: 1px; }
+        .hero-content p { font-size: 1.2rem; color: #a0aec0; margin-bottom: 30px; }
+
+        /* PREMIUM STICKY NAVBAR */
+        .home-navbar {
+            position: sticky;
+            top: 0;
+            background: rgba(7, 11, 20, 0.8);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            z-index: 100;
+            padding: 18px 0;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        .home-nav-links {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: center;
+            gap: 48px;
+            list-style: none;
+        }
+        .home-nav-links a {
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 15px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            position: relative;
+            padding-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+        .home-nav-links a:hover, .home-nav-links a.active { color: #ffd700; }
+        .home-nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #ffd700, #facc15);
+            transition: width 0.3s ease;
+        }
+        .home-nav-links a:hover::after, .home-nav-links a.active::after { width: 100%; }
+
+        /* SEARCH (moved below navbar + above grid) */
+        .search-container {
+            display: flex;
+            background: rgba(255,255,255,0.06);
+            padding: 8px 15px;
+            border-radius: 50px;
+            max-width: 600px;
+            margin: 0 auto;
+            border: 1px solid rgba(255,215,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+        .search-container i { color: #ffd700; align-self: center; font-size: 1.2rem; margin-right: 12px; }
+        .search-container input {
+            width: 100%; background: none; border: none; outline: none;
+            color: white; font-size: 1.1rem; padding: 10px 0;
+        }
+        .search-container input::placeholder { color: rgba(255,255,255,0.4); }
+
+        .search-row {
+            margin-top: 18px; /* move slightly down for premium spacing */
+            padding: 0 20px;
+        }
+
+        /* Premium search shell (gold glass) */
+        .search-glow {
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+        .search-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+            padding: 10px 15px;
+            border-radius: 999px;
+            max-width: 640px;
+            margin: 0 auto;
+            border: 1px solid rgba(255,215,0,0.28);
+            backdrop-filter: blur(14px);
+            box-shadow:
+                0 12px 30px rgba(0,0,0,0.35),
+                inset 0 0 0 1px rgba(255,255,255,0.06);
+            overflow: hidden;
+        }
+        .search-container::before {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            background: conic-gradient(from 180deg, rgba(255,215,0,0.0), rgba(255,215,0,0.55), rgba(255,215,0,0.0));
+            opacity: 0.35;
+            filter: blur(8px);
+            transform: translateY(8px);
+            pointer-events: none;
+        }
+        .search-container::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, rgba(255,215,0,0.0), rgba(255,215,0,0.18), rgba(255,215,0,0.0));
+            opacity: 0.5;
+            pointer-events: none;
+            animation: shimmer 2.8s linear infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-60%); }
+            100% { transform: translateX(60%); }
+        }
+        .search-container i {
+            position: relative;
+            z-index: 2;
+            color: #ffd700;
+            align-self: center;
+            font-size: 1.15rem;
+            margin-right: 12px;
+            text-shadow: 0 0 18px rgba(255,215,0,0.35);
+        }
+        .search-container input {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            background: none;
+            border: none;
+            outline: none;
+            color: white;
+            font-size: 1.05rem;
+            padding: 12px 0;
+            letter-spacing: 0.2px;
+        }
+        .search-container input::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+        .search-container input:focus {
+            box-shadow: none;
+        }
+
+        .search-container:focus-within {
+            border-color: rgba(255,215,0,0.55);
+            box-shadow:
+                0 18px 50px rgba(0,0,0,0.45),
+                0 0 0 3px rgba(255,215,0,0.12),
+                inset 0 0 0 1px rgba(255,255,255,0.08);
+        }
+
+        @media(max-width: 768px) {
+            .search-row { margin-top: 14px; }
+            .search-container { max-width: 520px; padding: 10px 12px; }
+            .search-container input { font-size: 1rem; }
+        }
+
+
+
+        /* MAIN MATRIX GRID */
+        .container { max-width: 1300px; margin: 0 auto; padding: 60px 20px; }
+        .section-header { margin-bottom: 40px; display: flex; justify-content: space-between; align-items: flex-end; }
+        .section-header h2 { font-size: 2.2rem; color: white; font-weight: 600; }
+        .section-header h2 span { color: #ffd700; }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+        
+        .card {
+            background: rgba(255,255,255,0.03); border-radius: 16px; overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.05); transition: transform 0.4s ease, border-color 0.4s ease;
+            cursor: pointer; opacity: 0; transform: translateY(26px);
+        }
+        .card:hover {
+            transform: translateY(-8px); border-color: rgba(255,215,0,0.4);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+        }
+        
+        .img-container { height: 220px; position: relative; overflow: hidden; background: #1a202c; }
+        .img-container img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s ease; }
+
+        .card:hover .img-container img { transform: scale(1.06); }
+        
+        .luxury-badge {
+            position: absolute; top: 15px; left: 15px; background: linear-gradient(135deg, #ffd700, #b8860b);
+            color: #000; padding: 5px 14px; font-size: 0.75rem; font-weight: 700; border-radius: 50px;
+            text-transform: uppercase; letter-spacing: 0.5px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        
+        .card-body { padding: 18px; }
+        .card-body h3 { font-size: 1.25rem; color: white; margin-bottom: 6px; font-weight: 650; letter-spacing: 0.2px; }
+        .card-body p { color: #a0aec0; font-size: 0.92rem; line-height: 1.55; margin-bottom: 14px; }
+
+        /* premium CTA-like hover overlay */
+        .card::after {
+            content:'';
+            position:absolute;
+            inset:0;
+            background: radial-gradient(600px 220px at 10% 0%, rgba(255,215,0,0.12), rgba(255,215,0,0) 50%),
+                        radial-gradient(420px 180px at 90% 0%, rgba(250,204,21,0.10), rgba(250,204,21,0) 55%);
+            opacity: 0;
+            transition: opacity 0.35s ease;
+            pointer-events:none;
+        }
+        .card:hover::after { opacity: 1; }
+
+        .card-footer {
+            position: relative;
+            z-index: 2;
+        }
+
+        .discover-arrow {
+            width: 42px; height: 42px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            border: 1px solid rgba(255,255,255,0.12);
+            transition: background 0.3s, color 0.3s, transform 0.3s, box-shadow 0.3s;
+            color: #ffd700;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+        }
+        .card:hover .discover-arrow {
+            background: linear-gradient(135deg, #ffd700, #eab308);
+            color: #000;
+            transform: translateX(4px) translateY(-1px) scale(1.03);
+            box-shadow: 0 18px 35px rgba(255,215,0,0.22);
+        }
+
+        .discover-arrow i {
+            transition: transform 0.25s ease;
+        }
+        .card:hover .discover-arrow i {
+            transform: translateX(2px);
+        }
+
+        
+        .card-footer {
+            display: flex; justify-content: space-between; align-items: center;
+            border-top: 1px solid rgba(255,255,255,0.06); padding-top: 15px;
+        }
+        .pricing-tag { font-size: 0.85rem; color: #a0aec0; }
+        .pricing-tag span { display: block; font-size: 1.3rem; color: #ffd700; font-weight: 600; margin-top: 2px; }
+        
+        .discover-arrow {
+            width: 45px; height: 45px; background: rgba(255,255,255,0.05); border-radius: 50%;
+            display: flex; justify-content: center; align-items: center; border: 1px solid rgba(255,255,255,0.1);
+            transition: background 0.3s, color 0.3s, transform 0.3s; color: #ffd700;
+        }
+        .card:hover .discover-arrow { background: #ffd700; color: #000; transform: translateX(3px); }
+        
+        @media(max-width: 768px) {
+            .hero-content h1 { font-size: 2.5rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <div class="hero-content">
+        <h1 id="homeHeroTitle">The Grand Banquet Vault</h1>
+        <p id="homeHeroSubtitle">Curated Luxury & Elite Experiences Beyond Imagination</p>
+    </div>
+</div>
+
+<nav class="home-navbar">
+    <ul class="home-nav-links">
+        <li><a href="#" id="navBanquets" class="active" onclick="setHomeMode('banquets'); return false;">Banquets</a></li>
+        <li><a href="#" id="navHalls" onclick="setHomeMode('halls'); return false;">Halls</a></li>
+    </ul>
+</nav>
+
+<div class="search-row">
+    <div class="search-container">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="text" id="searchInput" placeholder="Search elite banquets by name, features or tags..." oninput="liveSearch()">
+    </div>
+</div>
+
+<div class="container">
+    <div class="section-header">
+        <h2 id="homeSectionTitle">Available <span>Luxury Spaces</span></h2>
+    </div>
+    <div class="grid" id="grid"></div>
+</div>
+
+
+<script>
+const defaultData = {
+    "paradise": {
+        "title": "The Paradise Vault",
+        "tag": "Centrally Air Conditioned Luxury Space with LED Architecture & Executive Lounges.",
+        "img": "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80",
+        "startDate": new Date().toISOString().split('T')[0]
+    },
+    "royal": {
+        "title": "Royal Heritage Hall",
+        "tag": "Palatial Architecture with Persian Chandeliers, Premium Carpeting & Golden Accents.",
+        "img": "https://images.unsplash.com/photo-1549417229-aa67d3263c09?auto=format&fit=crop&w=800&q=80",
+        "startDate": new Date().toISOString().split('T')[0]
+    }
+};
+
+// Sample fallback (agar hallData absent ho)
+const defaultHallData = {
+    "hall-paradise": {
+        "title": "Paradise Hall Vault",
+        "tag": "Centrally Air Conditioned Luxury Hall with LED Architecture & Executive Lounge.",
+        "img": "https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80",
+        "startDate": new Date().toISOString().split('T')[0]
+    },
+    "hall-royal": {
+        "title": "Royal Heritage Hall",
+        "tag": "Palatial Architecture with Persian Chandeliers, Premium Carpeting & Golden Accents.",
+        "img": "https://images.unsplash.com/photo-1549417229-aa67d3263c09?auto=format&fit=crop&w=800&q=80",
+        "startDate": new Date().toISOString().split('T')[0]
+    }
+};
+
+
+// 1. Din calculate karne ka function (Jaise admin panel mai hai)
+function calculateActiveDays(startDateStr) {
+    if(!startDateStr) return 1;
+    const start = new Date(startDateStr);
+    const today = new Date();
+    start.setHours(0,0,0,0); 
+    today.setHours(0,0,0,0);
+    return Math.floor(Math.abs(today - start) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+let homeMode = "banquets";
+
+function ensureBanquetData() {
+    if (!localStorage.getItem("banquetData")) {
+        localStorage.setItem("banquetData", JSON.stringify(defaultData));
+    }
+}
+
+function ensureHallData() {
+    // halls ke liye agar data absent ho to sample demo rakh dein
+    if (!localStorage.getItem("hallData")) {
+        localStorage.setItem("hallData", JSON.stringify(defaultHallData));
+    }
+}
+
+
+function setHomeMode(mode) {
+    homeMode = mode;
+
+    // active state
+    document.getElementById("navBanquets").classList.toggle("active", mode === "banquets");
+    document.getElementById("navHalls").classList.toggle("active", mode === "halls");
+
+    // hero + placeholder
+    if (mode === "banquets") {
+        document.getElementById("homeHeroTitle").innerText = "The Grand Banquet Vault";
+        document.getElementById("homeSectionTitle").innerHTML = "Available <span>Luxury Spaces</span>";
+        document.getElementById("searchInput").placeholder = "Search elite banquets by name, features or tags...";
+        renderBanquets();
+    } else {
+        document.getElementById("homeHeroTitle").innerText = "The Grand Hall Vault";
+        document.getElementById("homeSectionTitle").innerHTML = "Available <span>Luxury Halls</span>";
+        document.getElementById("searchInput").placeholder = "Search elite halls by name, features or tags...";
+        renderHalls();
+    }
+
+    // reset search
+    document.getElementById("searchInput").value = "";
+}
+
+function renderBanquets() {
+    ensureBanquetData();
+
+    const data = JSON.parse(localStorage.getItem("banquetData")) || {};
+    const grid = document.getElementById("grid");
+    grid.innerHTML = "";
+
+    Object.keys(data).forEach((key, i) => {
+        const item = data[key];
+
+        const activeDays = calculateActiveDays(item.startDate);
+        if (activeDays > 30) return;
+
+        const displayPrice = item.seasonalPrice || "350,000";
+        const card = document.createElement("div");
+        card.className = "card";
+        card.setAttribute("onclick", `openBanquet('${key}')`);
+        card.innerHTML = `
+            <div class="img-container">
+                <img src="${item.img}">
+                <div class="luxury-badge">Verified Luxury</div>
+            </div>
+            <div class="card-body">
+                <h3>${item.title}</h3>
+                <p>${item.tag}</p>
+                <div class="card-footer">
+                    <div class="pricing-tag">Starts From <span>Rs. ${displayPrice}</span></div>
+                    <div class="discover-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                </div>
+            </div>
+        `;
+        grid.appendChild(card);
+
+        gsap.to(card, {
+            scrollTrigger: { trigger: card, start: "top 90%", toggleActions: "play none none reverse" },
+            opacity: 1, y: 0, duration: 0.6, delay: i * 0.05, ease: "power2.out"
+        });
+    });
+}
+
+function renderHalls() {
+    ensureHallData();
+
+    const data = JSON.parse(localStorage.getItem("hallData")) || {};
+    const grid = document.getElementById("grid");
+    grid.innerHTML = "";
+
+    Object.keys(data).forEach((key, i) => {
+        const item = data[key];
+
+        const activeDays = calculateActiveDays(item.startDate);
+        if (activeDays > 30) return;
+
+        const displayPrice = item.seasonalPrice || "350,000";
+        const card = document.createElement("div");
+        card.className = "card";
+        card.setAttribute("onclick", `openHall('${key}')`);
+        card.innerHTML = `
+            <div class="img-container">
+                <img src="${item.img}">
+                <div class="luxury-badge">Verified Luxury</div>
+            </div>
+            <div class="card-body">
+                <h3>${item.title}</h3>
+                <p>${item.tag}</p>
+                <div class="card-footer">
+                    <div class="pricing-tag">Starts From <span>Rs. ${displayPrice}</span></div>
+                    <div class="discover-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                </div>
+            </div>
+        `;
+        grid.appendChild(card);
+
+        gsap.to(card, {
+            scrollTrigger: { trigger: card, start: "top 90%", toggleActions: "play none none reverse" },
+            opacity: 1, y: 0, duration: 0.6, delay: i * 0.05, ease: "power2.out"
+        });
+    });
+}
+
+function openBanquet(id) {
+    localStorage.setItem("banquetId", id);
+    window.location.href = "banquet.html";
+}
+
+function openHall(id) {
+    localStorage.setItem("hallId", id);
+    window.location.href = "hall.html";
+}
+
+function liveSearch() {
+    const input = document.getElementById("searchInput").value.toLowerCase();
+    const grid = document.getElementById("grid");
+    const cards = grid.querySelectorAll(".card");
+
+    cards.forEach(card => {
+        const text = card.innerText.toLowerCase();
+        const isMatch = input.trim() === "" || text.includes(input);
+
+        if (isMatch) {
+            card.style.display = "block";
+            gsap.to(card, { opacity: 1, y: 0, duration: 0.3 });
+        } else {
+            card.style.display = "none";
+        }
+    });
+}
+
+
+window.onload = () => {
+    setHomeMode("banquets");
+};
+
+</script>
+</body>
+</html>
+

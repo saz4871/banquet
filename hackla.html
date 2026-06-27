@@ -1,35 +1,107 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Firebase Check</title>
+    <title>Banquet Admin Panel</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .form-box { background: #f4f4f4; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        input { display: block; margin: 5px 0; padding: 8px; width: 300px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+    </style>
 </head>
 <body>
-    <h2>Firebase Connection Checker</h2>
-    <button id="checkBtn">Connection Check Karein</button>
-    <h3 id="resultText">Status: Pending...</h3>
+
+    <h1>Banquet Management</h1>
+
+    <div class="form-box">
+        <h3>Add New Banquet Entry</h3>
+        <input type="text" id="uid" placeholder="UID">
+        <input type="text" id="bankName" placeholder="Bank Name">
+        <input type="text" id="bankLoc" placeholder="Coordinates (e.g. 24.86, 67.00)">
+        <input type="text" id="bankLocText" placeholder="Location Name">
+        <input type="text" id="bankWhatsapp" placeholder="WhatsApp">
+        <input type="text" id="vendorUser" placeholder="Vendor User">
+        <input type="text" id="vendorPass" placeholder="Vendor Pass">
+        <input type="text" id="seasonCost" placeholder="Season Cost">
+        <input type="text" id="standardCost" placeholder="Standard Cost">
+        <input type="text" id="specialisation" placeholder="Specialisation">
+        <input type="text" id="startDate" placeholder="Start Date (YYYY-MM-DD)">
+        <input type="text" id="ytLink" placeholder="YouTube Link">
+        <input type="text" id="locLink" placeholder="Map Link">
+        <input type="text" id="detail" placeholder="Details">
+        <button id="addBtn">Save to Database</button>
+    </div>
+
+    <h3>Database Records</h3>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Location</th>
+                <th>Cost (Std)</th>
+                <th>WhatsApp</th>
+                <th>User</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
 
     <script type="module">
-        // Import database from your config file
         import { database } from './firebaseconfig.js';
-        import { ref, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+        import { ref, get, push, set } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-        document.getElementById('checkBtn').addEventListener('click', async () => {
-            const resultText = document.getElementById('resultText');
-            
+        const tableBody = document.getElementById('tableBody');
+
+        // Function: Fetch and Display Data
+        async function loadData() {
+            const snapshot = await get(ref(database, 'banquet'));
+            tableBody.innerHTML = "";
+            if (snapshot.exists()) {
+                snapshot.forEach((child) => {
+                    const d = child.val();
+                    tableBody.innerHTML += `<tr>
+                        <td>${d.bankname || ''}</td>
+                        <td>${d.banklocnametext || ''}</td>
+                        <td>${d.standardcost || ''}</td>
+                        <td>${d.bankwhatsapp || ''}</td>
+                        <td>${d.vendor_user || ''}</td>
+                    </tr>`;
+                });
+            }
+        }
+
+        // Function: Add Data
+        document.getElementById('addBtn').addEventListener('click', async () => {
+            const newData = {
+                UID: document.getElementById('uid').value,
+                bankname: document.getElementById('bankName').value,
+                bankloc: document.getElementById('bankLoc').value,
+                banklocnametext: document.getElementById('bankLocText').value,
+                bankwhatsapp: document.getElementById('bankWhatsapp').value,
+                vendor_user: document.getElementById('vendorUser').value,
+                vendor_pass: document.getElementById('vendorPass').value,
+                seasoncost: document.getElementById('seasonCost').value,
+                standardcost: document.getElementById('standardCost').value,
+                specialisation: document.getElementById('specialisation').value,
+                startdate: document.getElementById('startDate').value,
+                ytlink: document.getElementById('ytLink').value,
+                loclink: document.getElementById('locLink').value,
+                detail: document.getElementById('detail').value
+            };
+
             try {
-                // Root reference check
-                const dbRef = ref(database, '/');
-                await get(dbRef);
-                
-                resultText.innerText = "Status: Connection Successful! ✅";
-                resultText.style.color = "green";
-            } catch (error) {
-                resultText.innerText = "Status: Connection Failed! ❌";
-                resultText.style.color = "red";
-                console.error("Error:", error);
+                // 'banquet' node ke andar naya unique ID generate karke save karega
+                await set(push(ref(database, 'banquet')), newData);
+                alert("Data saved successfully!");
+                loadData(); // Table refresh karein
+            } catch (e) {
+                alert("Error: " + e.message);
             }
         });
+
+        // Page load hone par data load karein
+        loadData();
     </script>
 </body>
 </html>

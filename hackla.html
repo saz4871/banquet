@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+=<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -50,6 +50,27 @@
     .form{display:flex;flex-direction:column;gap:12px}
     .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     @media (max-width:560px){.row2{grid-template-columns:1fr}}
+
+    /* yellow boundary: vendor credentials together */
+    .vendor-creds-wrap{
+      border:1px solid rgba(255,215,0,.65);
+      background:rgba(255,215,0,.06);
+      border-radius:16px;
+      padding:14px;
+      box-shadow:0 0 18px rgba(255,215,0,.12);
+    }
+    .vendor-creds-title{
+      color:#ffd700;
+      font-weight:900;
+      font-size:12.5px;
+      letter-spacing:1px;
+      text-transform:uppercase;
+      margin-bottom:12px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .vendor-creds-title i{filter:drop-shadow(0 0 10px rgba(255,215,0,.25))}
 
     label{font-size:12px;color:#cbd5e1;font-weight:600;margin-bottom:6px;display:block}
     input,textarea{width:100%;padding:12px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:#0b1224;color:#f8fafc;outline:none;transition:.2s}
@@ -146,7 +167,7 @@
 
     <div class="layout">
       <div class="card panel">
-        <h2><i class="fa-solid fa-pen-nib"></i> { CRUD / Upsert } Banquet Record</h2>
+        <h2><i class="fa-solid fa-pen-nib"></i>Banquet Record</h2>
         <div class="form" onsubmit="return false">
 
 
@@ -155,21 +176,24 @@
               <label>UID</label>
               <input id="UID" type="text" placeholder="e.g. 12345" />
             </div>
-            <div>
-              <label>Vendor Username</label>
-              <input id="vendor_user" type="text" placeholder="admin_user" />
+            <div class="vendor-creds-wrap">
+              <div class="vendor-creds-title"><i class="fa-solid fa-user-shield"></i> Vendor Credentials</div>
+              <div class="row2">
+                <div>
+                  <label>Vendor Username</label>
+                  <input id="vendor_user" type="text" placeholder="admin_user" />
+                </div>
+                <div>
+                  <label>Vendor Password</label>
+                  <input id="vendor_pass" type="text" placeholder="pass123" />
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="row2">
           <div>
-              <label>Vendor Password</label>
-              <input id="vendor_pass" type="text" placeholder="pass123" />
-            </div>
-            <div>
-              <label>Banquet Showcase Name</label>
-              <input id="bankname" type="text" placeholder="Grand Hall" />
-            </div>
+            <label>Banquet Showcase Name</label>
+            <input id="bankname" type="text" placeholder="Grand Hall" />
           </div>
 
           <div class="row2">

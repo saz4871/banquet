@@ -238,10 +238,7 @@
                         <label>Banquet Showcase Name</label>
                         <input type="text" id="bTitle" placeholder="e.g. Royal Gold Marquee">
                     </div>
-                    <div class="form-group">
-                        <label>Banquet Location (text)</label>
-                        <input type="text" id="bLocation" placeholder="e.g. DHA Phase 8, Karachi">
-                    </div>
+
 
                     <div class="form-group">
                         <label>Location Link (direct URL) <i class="fa-solid fa-arrow-up-right-from-square" style="color:#ffd700; margin-left:6px;"></i></label>
@@ -364,13 +361,14 @@
                         <input type="text" id="hallTag" placeholder="e.g. DHA Phase 8 • Grand Luxury Setup">
                     </div>
                     <div class="form-group">
-                        <label>Hall Location (jahan pr location ayegi)</label>
-                        <input type="text" id="hallLocation" placeholder="e.g. DHA Phase 8, Karachi">
+                        <label>Location Link (direct URL) <i class="fa-solid fa-arrow-up-right-from-square" style="color:#ffd700; margin-left:6px;"></i></label>
+                        <input type="text" id="hallLocationLink" placeholder="e.g. https://maps.google.com/...">
                     </div>
                     <div class="form-group">
                         <label>WhatsApp Hotwire Line</label>
                         <input type="text" id="hallPhone" placeholder="e.g. 923001234567">
                     </div>
+
 
 
                     <div class="form-group price-tier" style="border-color: rgba(255,215,0,0.4); margin-bottom: 20px;">
@@ -472,7 +470,7 @@
                 <input type="text" id="hallSpreadsheetUIDSearchInput" placeholder="Type Unique ID (UID) to stream all matched historical logs..." onkeyup="filterHallSpreadsheetByUID()">
             </div>
 
-            <button class="spreadsheet-export-btn" onclick="exportHallSpreadsheetToPDF()">
+        <button class="spreadsheet-export-btn" onclick="exportHallSpreadsheetToPDF()">
                 <i class="fa-solid fa-file-pdf"></i> Export PDF Ledger
             </button>
         </div>
@@ -917,7 +915,8 @@ function loadSpreadsheetData() {
         tr.innerHTML = `
             <td style="font-weight:700; color:#ffd700;" contenteditable="false">${log.uid}</td>
             <td contenteditable="false">${log.title}</td>
-            <td contenteditable="false">${log.tag}</td>
+            <td contenteditable="false">${log.locationLink || log.location || log.tag || ''}</td>
+
 
             <td contenteditable="false">${log.phone || ''}</td>
             <td contenteditable="false">${log.startDate || ''}</td>
@@ -1031,7 +1030,7 @@ function setupEdit(key) {
     document.getElementById("bKey").value = key;
     document.getElementById("bKey").disabled = true; 
     document.getElementById("bTitle").value = item.title;
-    document.getElementById("bLocation").value = item.location || "";
+
     document.getElementById("bLocationLink").value = item.locationLink || "";
     document.getElementById("bTag").value = item.tag;
 
@@ -1070,8 +1069,11 @@ function saveHall() {
 
     const title = document.getElementById("hallTitle").value.trim();
     const tag = document.getElementById("hallTag").value.trim();
-    const location = document.getElementById("hallLocation").value.trim();
+    const locationLink = (document.getElementById("hallLocationLink") ? document.getElementById("hallLocationLink").value.trim() : "");
     const phone = document.getElementById("hallPhone").value.trim();
+
+
+
 
 
     const vUser = document.getElementById("hallVUser").value.trim();
@@ -1109,8 +1111,9 @@ function saveHall() {
     }
 
     data[key] = {
-        title, tag, location, phone, vUser, vPass,
+        title, tag, location: "", locationLink, phone, vUser, vPass,
         img: uploadedHallImagesBase64[0],
+
 
         imagesStack: uploadedHallImagesBase64,
         views: finalViews,
@@ -1130,6 +1133,9 @@ function saveHall() {
         uid: key,
         title: title,
         tag: tag,
+        location: '',
+        locationLink: locationLink,
+
         phone: phone,
         vUser: vUser,
         startDate: startDate,
@@ -1162,7 +1168,9 @@ function resetHallForm() {
     document.getElementById("hallKey").disabled = false;
     document.getElementById("hallTitle").value = "";
     document.getElementById("hallTag").value = "";
+    document.getElementById("hallLocationLink").value = "";
     document.getElementById("hallPhone").value = "";
+
     document.getElementById("hallVUser").value = "";
     document.getElementById("hallVPass").value = "";
     document.getElementById("hallpSeasonal").value = "";
@@ -1193,8 +1201,10 @@ function setupHallEdit(key) {
     document.getElementById("hallKey").disabled = true;
     document.getElementById("hallTitle").value = item.title;
     document.getElementById("hallTag").value = item.tag;
-    document.getElementById("hallLocation").value = item.location || "";
+    document.getElementById("hallLocationLink").value = item.locationLink || "";
+
     document.getElementById("hallPhone").value = item.phone || "";
+
 
     document.getElementById("hallVUser").value = item.vUser || "";
     document.getElementById("hallVPass").value = item.vPass || "";
@@ -1305,7 +1315,8 @@ function saveBanquet() {
     }
 
     const title = document.getElementById("bTitle").value.trim();
-    const location = document.getElementById("bLocation").value.trim();
+    const location = "";
+
     const locationLink = (document.getElementById("bLocationLink") ? document.getElementById("bLocationLink").value.trim() : "");
     const tag = document.getElementById("bTag").value.trim();
     const phone = document.getElementById("bPhone").value.trim();

@@ -5,9 +5,10 @@
     <style>
         body { font-family: sans-serif; padding: 20px; }
         .form-box { background: #f4f4f4; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-        input { display: block; margin: 5px 0; padding: 8px; width: 300px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        input { display: block; margin: 5px 0; padding: 5px; width: 250px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #eee; }
     </style>
 </head>
 <body>
@@ -15,10 +16,10 @@
     <h1>Banquet Management</h1>
 
     <div class="form-box">
-        <h3>Add New Banquet Entry</h3>
+        <h3>Add New Entry</h3>
         <input type="text" id="uid" placeholder="UID">
         <input type="text" id="bankName" placeholder="Bank Name">
-        <input type="text" id="bankLoc" placeholder="Coordinates (e.g. 24.86, 67.00)">
+        <input type="text" id="bankLoc" placeholder="Coordinates (24.86, 67.00)">
         <input type="text" id="bankLocText" placeholder="Location Name">
         <input type="text" id="bankWhatsapp" placeholder="WhatsApp">
         <input type="text" id="vendorUser" placeholder="Vendor User">
@@ -33,15 +34,18 @@
         <button id="addBtn">Save to Database</button>
     </div>
 
-    <h3>Database Records</h3>
+    <h3>All Database Records</h3>
     <table border="1">
         <thead>
             <tr>
+                <th>UID</th>
                 <th>Name</th>
-                <th>Location</th>
-                <th>Cost (Std)</th>
+                <th>Loc Text</th>
                 <th>WhatsApp</th>
                 <th>User</th>
+                <th>Season Cost</th>
+                <th>Std Cost</th>
+                <th>Details</th>
             </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -53,7 +57,6 @@
 
         const tableBody = document.getElementById('tableBody');
 
-        // Function: Fetch and Display Data
         async function loadData() {
             const snapshot = await get(ref(database, 'banquet'));
             tableBody.innerHTML = "";
@@ -61,17 +64,19 @@
                 snapshot.forEach((child) => {
                     const d = child.val();
                     tableBody.innerHTML += `<tr>
+                        <td>${d.UID || ''}</td>
                         <td>${d.bankname || ''}</td>
                         <td>${d.banklocnametext || ''}</td>
-                        <td>${d.standardcost || ''}</td>
                         <td>${d.bankwhatsapp || ''}</td>
                         <td>${d.vendor_user || ''}</td>
+                        <td>${d.seasoncost || ''}</td>
+                        <td>${d.standardcost || ''}</td>
+                        <td>${d.detail || ''}</td>
                     </tr>`;
                 });
             }
         }
 
-        // Function: Add Data
         document.getElementById('addBtn').addEventListener('click', async () => {
             const newData = {
                 UID: document.getElementById('uid').value,
@@ -90,17 +95,11 @@
                 detail: document.getElementById('detail').value
             };
 
-            try {
-                // 'banquet' node ke andar naya unique ID generate karke save karega
-                await set(push(ref(database, 'banquet')), newData);
-                alert("Data saved successfully!");
-                loadData(); // Table refresh karein
-            } catch (e) {
-                alert("Error: " + e.message);
-            }
+            await set(push(ref(database, 'banquet')), newData);
+            alert("Entry Saved!");
+            loadData();
         });
 
-        // Page load hone par data load karein
         loadData();
     </script>
 </body>

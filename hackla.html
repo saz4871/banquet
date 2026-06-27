@@ -154,155 +154,223 @@
       .layout{grid-template-columns:1fr;}
       .tableScroll{max-height:55vh;}
     }
-  </style>
+  .admin2-navbar {
+    position: sticky;
+    top: 0;
+    background: rgba(7, 11, 20, 0.8);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    z-index: 100;
+    padding: 18px 0;
+  }
+  .admin2-nav-links {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    justify-content: center;
+    gap: 48px;
+    list-style: none;
+  }
+  .admin2-nav-links a {
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    position: relative;
+    padding-bottom: 6px;
+    letter-spacing: 0.5px;
+  }
+  .admin2-nav-links a:hover, .admin2-nav-links a.active { color: #ffd700; }
+  .admin2-nav-links a::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #ffd700, #facc15);
+    transition: width 0.3s ease;
+  }
+  .admin2-nav-links a:hover::after, .admin2-nav-links a.active::after { width: 100%; }
+
+</style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <h1>Banquet Management</h1>
+  <nav class="admin2-navbar">
+    <ul class="admin2-nav-links">
+      <li><a href="#" id="admin2NavBanquet" class="active" onclick="switchTab('banquet', this); return false;">Banquet Management</a></li>
+      <li><a href="#" id="admin2NavHall" onclick="switchTab('hall', this); return false;">Hall Management</a></li>
+    </ul>
+  </nav>
+
+  <div id="bbWorkspace" class="bb-main-content">
+    <div class="tab-section" id="banquet-tab" data-tab="banquet">
+
+      <div class="wrap">
+        <div class="topbar">
+          <div class="brand">
+            <h1>Banquet Management</h1>
+          </div>
+          <div class="pill"><i class="fa-solid fa-database"></i> Records: <b id="countBadge">0</b></div>
+        </div>
+
+        <!-- Active / Expired Cards (Banquet) -->
+        <div class="layout" style="grid-template-columns: 320px 1fr;">
+          <div class="card panel" style="padding:16px 16px 18px;">
+            <h2 style="margin-bottom:14px;"><i class="fa-solid fa-layer-group"></i> Banquet Status</h2>
+            <div style="display:grid;grid-template-columns:1fr;gap:12px;">
+              <div id="activeCard" style="padding:14px 14px;border-radius:16px;border:1px solid rgba(74,222,128,.35);background:rgba(74,222,128,.10);">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                  <div style="font-weight:1000;color:#4ade80;letter-spacing:.3px;">Active</div>
+                  <div style="font-weight:1000;color:#fff;">+<span id="activeCount">0</span></div>
+                </div>
+                <div style="margin-top:8px;color:#cbd5e1;font-size:12.5px;">Active User Rows: <b id="activeUserRows">0</b></div>
               </div>
-      <div class="pill"><i class="fa-solid fa-database"></i> Records: <b id="countBadge">0</b></div>
-    </div>
 
-    <div class="layout">
-      <div class="card panel">
-        <h2><i class="fa-solid fa-pen-nib"></i>Banquet Record</h2>
-        <div class="form" onsubmit="return false">
-
-
-          <div class="row2">
-            <div>
-              <label>UID</label>
-              <input id="UID" type="text" placeholder="e.g. 12345" />
+              <div id="expiredCard" style="padding:14px 14px;border-radius:16px;border:1px solid rgba(248,113,113,.35);background:rgba(248,113,113,.10);">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+                  <div style="font-weight:1000;color:#f87171;letter-spacing:.3px;">Expired</div>
+                  <div style="font-weight:1000;color:#fff;">+<span id="expiredCount">0</span></div>
+                </div>
+                <div style="margin-top:8px;color:#cbd5e1;font-size:12.5px;">Expired User Rows: <b id="expiredUserRows">0</b></div>
+              </div>
             </div>
-            <div class="vendor-creds-wrap">
-              <div class="vendor-creds-title"><i class="fa-solid fa-user-shield"></i> Vendor Credentials</div>
+          </div>
+
+          <div>
+            <div class="layout">
+              <div class="card panel">
+                <h2><i class="fa-solid fa-pen-nib"></i> Banquet Record</h2>
+                <div class="form" onsubmit="return false">
               <div class="row2">
                 <div>
-                  <label>Vendor Username</label>
-                  <input id="vendor_user" type="text" placeholder="admin_user" />
+                  <label>UID</label>
+                  <input id="UID" type="text" placeholder="e.g. 12345" />
                 </div>
-                <div>
-                  <label>Vendor Password</label>
-                  <input id="vendor_pass" type="text" placeholder="pass123" />
+                <div class="vendor-creds-wrap">
+                  <div class="vendor-creds-title"><i class="fa-solid fa-user-shield"></i> Vendor Credentials</div>
+                  <div class="row2">
+                    <div>
+                      <label>Vendor Username</label>
+                      <input id="vendor_user" type="text" placeholder="admin_user" />
+                    </div>
+                    <div>
+                      <label>Vendor Password</label>
+                      <input id="vendor_pass" type="text" placeholder="pass123" />
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
 
-          <div>
-            <label>Banquet Showcase Name</label>
-            <input id="bankname" type="text" placeholder="Grand Hall" />
-          </div>
+              <div class="divider" aria-hidden="true" style="height:1px;background:rgba(255,255,255,.08);margin:8px 0 2px;"></div>
 
-          <div class="row2">
-            <div>
-              <label>User Name (for this UID)</label>
-              <input id="user" type="text" placeholder="Noman" />
-            </div>
-            <div>
-              <label>Location Link</label>
-              <input id="bankloclink" type="text" placeholder="24.8607, 67.0011 or url" />
-            </div>
-          </div>
-          </div>
+              <div>
+                <label>Banquet Showcase Name</label>
+                <input id="bankname" type="text" placeholder="Grand Hall" />
+              </div>
 
-          <div>
-            <label>Location Link</label>
-            <input id="bankloclink" type="text" placeholder="24.8607, 67.0011 or url" />
-          </div>
+              <div class="row2">
+                <div>
+                  <label>User Name (for this UID)</label>
+                  <input id="user" type="text" placeholder="Noman" />
+                </div>
+                <div>
+                  <label>Location Link</label>
+                  <input id="bankloclink" type="text" placeholder="24.8607, 67.0011 or url" />
+                </div>
+              </div>
 
-          <div>
-            <label>Location Text</label>
-            <input id="bankloctext" type="text" placeholder="Main Road, Karachi" />
-          </div>
+              <div>
+                <label>Location Text</label>
+                <input id="bankloctext" type="text" placeholder="Main Road, Karachi" />
+              </div>
 
+              <div class="row2">
+                <div>
+                  <label>Whatsapp</label>
+                  <input id="bankwhatsapp" type="text" placeholder="+923001234567" />
+                </div>
+                <div>
+                  <label>Start Date</label>
+                  <input id="startdate" type="date" />
+                </div>
+              </div>
 
-          <div class="row2">
-            <div>
-              <label>Whatsapp</label>
-              <input id="bankwhatsapp" type="text" placeholder="+923001234567" />
-            </div>
-            <div>
-              <label>Start Date</label>
-              <input id="startdate" type="date" />
-            </div>
-          </div>
+              <div class="row2">
+                <div>
+                  <label>Weekend Season Rate</label>
+                  <input id="seasoncost" type="text" placeholder="50000" />
+                </div>
+                <div>
+                  <label>Standard Off-Peak Rate</label>
+                  <input id="standardcost" type="text" placeholder="30000" />
+                </div>
+              </div>
 
-          <div class="row2">
-            <div>
-              <label>Weekend Season Rate</label>
-              <input id="seasoncost" type="text" placeholder="50000" />
-            </div>
-            <div>
-              <label>Standard Off-Peak Rate</label>
-              <input id="standardcost" type="text" placeholder="30000" />
-            </div>
-          </div>
+              <div>
+                <label>Specialisation</label>
+                <div class="checkbox-grid" id="specialisationBox">
+                  <label class="check-item"><input type="checkbox" class="specChk" value="Luxury Seating Suite" /> Luxury Seating Suite</label>
+                  <label class="check-item"><input type="checkbox" class="specChk" value="Master-Class Catering Team" /> Master-Class Catering Team</label>
+                  <label class="check-item"><input type="checkbox" class="specChk" value="Monitoring CCTV Setup" /> Monitoring CCTV Setup</label>
+                  <label class="check-item"><input type="checkbox" class="specChk" value="Custom Immersive Themes" /> Custom Immersive Themes</label>
+                  <label class="check-item"><input type="checkbox" class="specChk" value="Premium Elite Valet System" /> Premium Elite Valet System</label>
+                </div>
+              </div>
 
-          <div>
-            <label>Specialisation</label>
-            <div class="checkbox-grid" id="specialisationBox">
-              <label class="check-item"><input type="checkbox" class="specChk" value="Luxury Seating Suite" /> Luxury Seating Suite</label>
-              <label class="check-item"><input type="checkbox" class="specChk" value="Master-Class Catering Team" /> Master-Class Catering Team</label>
-              <label class="check-item"><input type="checkbox" class="specChk" value="Monitoring CCTV Setup" /> Monitoring CCTV Setup</label>
-              <label class="check-item"><input type="checkbox" class="specChk" value="Custom Immersive Themes" /> Custom Immersive Themes</label>
-              <label class="check-item"><input type="checkbox" class="specChk" value="Premium Elite Valet System" /> Premium Elite Valet System</label>
-            </div>
-          </div>
+              <div>
+                <label>YouTube Stream Link</label>
+                <input id="ytlink" type="text" placeholder="https://youtube.com/..." />
+              </div>
 
+              <div>
+                <label>Detail</label>
+                <textarea id="detail" placeholder="Full description..."></textarea>
+              </div>
 
-          <div>
-            <label>YouTube Stream Link</label>
-            <input id="ytlink" type="text" placeholder="https://youtube.com/..." />
-          </div>
+              <div>
+                <label>Picture Upload (4 MAX)</label>
+                <input id="imgFile" type="file" accept="image/*" multiple />
+                <div class="loading-text" id="imgLoadingNotice">✨ Processing images...</div>
+                <div class="preview-wrapper" id="previewContainer"></div>
+              </div>
 
-          <div>
-            <label>Detail</label>
-            <textarea id="detail" placeholder="Full description..."></textarea>
-          </div>
+              <div class="actions">
+                <button class="btn-primary" id="saveBtn"><i class="fa-solid fa-floppy-disk"></i> Save/Update</button>
+                <button class="btn-ghost" id="clearBtn"><i class="fa-solid fa-broom"></i> Clear</button>
+              </div>
 
-          <div>
-            <label>Picture Upload (4 MAX)</label>
-            <input id="imgFile" type="file" accept="image/*" multiple />
-            <div class="loading-text" id="imgLoadingNotice">✨ Processing images...</div>
-            <div class="preview-wrapper" id="previewContainer"></div>
-          </div>
+              <script>
+                // make UID uneditable during edit mode until Save/Update or Clear
+                (function(){
+                  const uidEl = document.getElementById('UID');
+                  const saveBtn = document.getElementById('saveBtn');
+                  const clearBtn = document.getElementById('clearBtn');
 
-          <div class="actions">
-        <button class="btn-primary" id="saveBtn"><i class="fa-solid fa-floppy-disk"></i> Save/Update</button>
+                  // called when table Edit button is pressed (we detect it inside delegated click)
 
-            <button class="btn-ghost" id="clearBtn"><i class="fa-solid fa-broom"></i> Clear</button>
-          </div>
+                  window.__admin2_setUidEditableMode = function({editing}){
+                    if(!uidEl) return;
+                    if(editing){
+                      uidEl.disabled = true;
+                      uidEl.dataset.prevDisabled = 'true';
+                    } else {
+                      uidEl.disabled = false;
+                      delete uidEl.dataset.prevDisabled;
+                    }
+                  };
 
-          <script>
-            // make UID uneditable during edit mode until Save/Update or Clear
-            (function(){
-              const uidEl = document.getElementById('UID');
-              const saveBtn = document.getElementById('saveBtn');
-              const clearBtn = document.getElementById('clearBtn');
+                  if(saveBtn){
+                    saveBtn.addEventListener('click', ()=>window.__admin2_setUidEditableMode({editing:false}));
+                  }
+                  if(clearBtn){
+                    clearBtn.addEventListener('click', ()=>window.__admin2_setUidEditableMode({editing:false}));
+                  }
+                })();
+              </script>
 
-              // called when table Edit button is pressed (we detect it inside delegated click)
-              window.__admin2_setUidEditableMode = function({editing}){
-                if(!uidEl) return;
-                if(editing){
-                  uidEl.disabled = true;
-                  uidEl.dataset.prevDisabled = 'true';
-                } else {
-                  uidEl.disabled = false;
-                  delete uidEl.dataset.prevDisabled;
-                }
-              };
-
-              if(saveBtn){
-                saveBtn.addEventListener('click', ()=>window.__admin2_setUidEditableMode({editing:false}));
-              }
-              if(clearBtn){
-                clearBtn.addEventListener('click', ()=>window.__admin2_setUidEditableMode({editing:false}));
-              }
-            })();
-          </script>
 
 
           
@@ -317,6 +385,8 @@
           </div>
           <div class="pill" title="Firebase path">Path: <b>banquet/unique_bank</b></div>
         </div>
+
+        <!-- table content continues (existing) -->
 
         <div class="tableScroll" style="max-height:70vh; overflow:auto;">
           <table>
@@ -676,6 +746,49 @@
       const snapshot = await get(ref(database, "banquet/unique_bank"));
       const data = snapshot.val() || {};
       const list = [];
+
+      // Active / Expired cards (based on countdownDays)
+      // Spec: if countdownDays == 0 => Expired card user row count +1 else Active.
+      let activeUserRows = 0;
+      let expiredUserRows = 0;
+
+      const today0 = new Date();
+      today0.setHours(0,0,0,0);
+      // If countdownDays is present in Firebase, we trust it. Otherwise fallback to startdate.
+      for (const k of Object.keys(data)) {
+        const it = data[k] || {};
+        const countdownDaysRaw = it.countdownDays;
+
+        const countdownDays = (countdownDaysRaw === "" || countdownDaysRaw == null)
+          ? null
+          : Number(countdownDaysRaw);
+
+        // Determine expiry using countdownDays if available, otherwise compute from startdate.
+        let isExpired = false;
+        if (countdownDays != null && Number.isFinite(countdownDays)) {
+          isExpired = countdownDays <= 0;
+        } else {
+          const startAt = normalizeDate(it.startdate);
+          const rem = computeRemainingDays(startAt, today0, MAX_DAYS);
+          isExpired = rem <= 0;
+        }
+
+        if (isExpired) {
+          expiredUserRows += 1;
+        } else {
+          activeUserRows += 1;
+        }
+      }
+
+      const activeCountEl = document.getElementById('activeCount');
+      const expiredCountEl = document.getElementById('expiredCount');
+      const activeUserRowsEl = document.getElementById('activeUserRows');
+      const expiredUserRowsEl = document.getElementById('expiredUserRows');
+      if (activeCountEl) activeCountEl.textContent = String(activeUserRows);
+      if (expiredCountEl) expiredCountEl.textContent = String(expiredUserRows);
+      if (activeUserRowsEl) activeUserRowsEl.textContent = String(activeUserRows);
+      if (expiredUserRowsEl) expiredUserRowsEl.textContent = String(expiredUserRows);
+
 
       for (const k of Object.keys(data)) {
         const it = data[k] || {};
@@ -1091,7 +1204,44 @@
     await loadRecords();
     gsap.from(".layout", { opacity: 0, y: 14, duration: .35, ease: "power2.out" });
   </script>
+
+  <!-- Tabs/Sidebar script (Hall placeholder empty as requested) -->
+  <script>
+    // (sidebar remove ho chuka hai; navbar pe tab switching hoti hai)
+    (function () {
+      return;
+    })();
+
+
+    window.switchTab = function (tab, el) {
+      const banquet = document.getElementById('banquet-tab');
+      const hall = document.getElementById('hall-tab');
+      const navBanquet = document.getElementById('admin2NavBanquet');
+      const navHall = document.getElementById('admin2NavHall');
+
+      if (banquet) banquet.style.display = tab === 'banquet' ? '' : 'none';
+      if (hall) hall.style.display = tab === 'hall' ? '' : 'none';
+
+      if (navBanquet) navBanquet.classList.toggle('active', tab === 'banquet');
+      if (navHall) navHall.classList.toggle('active', tab === 'hall');
+
+      if (el) {
+        document.querySelectorAll('.admin2-nav-links a').forEach(x => x.classList.remove('active'));
+        el.classList.add('active');
+      }
+    };
+
+    window.logoutSession = function () {
+      window.location.href = 'login.html';
+    };
+
+    // init
+    try { window.switchTab('banquet'); } catch (e) {}
+  </script>
 </body>
 </html>
+
+
+
 
  

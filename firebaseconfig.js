@@ -1,22 +1,17 @@
-<!DOCTYPE html>
-<html>
-<body>
-    <h1>Banquet App</h1>
-    <button id="testBtn">Test Database</button>
+// Sahi CDN links ka use karein taake browser import kar sake
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-    <script type="module">
-        // Sirf config file ko import karein
-        import { database } from './firebase-config.js';
-        import { ref, get } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+const firebaseConfig = {
+  apiKey: "AIzaSyBDmjfsZcQ_cqH_SAXBfg6-BIACbs_jtUw",
+  authDomain: "banquet-744d0.firebaseapp.com",
+  databaseURL: "https://banquet-744d0-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "banquet-744d0",
+  storageBucket: "banquet-744d0.firebasestorage.app",
+  messagingSenderId: "648773878860",
+  appId: "1:648773878860:web:5480be78312097c3caa0e9",
+  measurementId: "G-QH80XEQH90"
+};
 
-        document.getElementById('testBtn').addEventListener('click', async () => {
-            try {
-                const snapshot = await get(ref(database, '/'));
-                alert("Connection Successful!");
-            } catch (error) {
-                alert("Connection Failed: " + error.message);
-            }
-        });
-    </script>
-</body>
-</html>
+const app = initializeApp(firebaseConfig);
+export const database = getDatabase(app);

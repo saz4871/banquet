@@ -110,6 +110,24 @@
     .toast{position:fixed;right:18px;bottom:18px;background:#0b1224;border:1px solid rgba(255,255,255,.14);padding:12px 14px;border-radius:14px;color:#e5e7eb;box-shadow:0 20px 45px rgba(0,0,0,.35);display:none;z-index:999}
     .toast.show{display:block}
 
+    /* 2-step modal auth */
+    #twoStepOverlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:2000;background:rgba(3,7,18,.55);backdrop-filter: blur(10px);-webkit-backdrop-filter: blur(10px);}
+    #twoStepModal{width:520px;max-width:92%;background:rgba(15,23,42,.96);border:1px solid rgba(255,255,255,.14);border-radius:20px;box-shadow:0 30px 70px rgba(0,0,0,.55);padding:22px 20px;animation:bbModalIn .28s ease-out;}
+    @keyframes bbModalIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+    .twoStepTitle{color:#ffd700;font-weight:900;letter-spacing:.2px;font-size:18px;display:flex;align-items:center;gap:10px;margin-bottom:10px}
+    .twoStepTitle i{filter:drop-shadow(0 0 10px rgba(255,215,0,.25))}
+    .twoStepSub{color:#94a3b8;font-size:12.5px;line-height:1.4;margin-bottom:14px}
+    .twoStepField label{display:block;color:#cbd5e1;font-size:12px;font-weight:700;margin-bottom:8px}
+    .twoStepField input{width:100%;padding:14px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#f8fafc;outline:none;transition:.2s}
+    .twoStepField input:focus{border-color:rgba(255,215,0,.65);box-shadow:0 0 0 4px rgba(255,215,0,.12)}
+    .twoStepActions{display:flex;gap:12px;flex-wrap:wrap;justify-content:flex-end;margin-top:16px}
+    .btn-twoStep{cursor:pointer;border:none;border-radius:12px;padding:12px 14px;font-weight:900}
+    .btn-confirm{background:linear-gradient(135deg,#ffd700,#ffb300);color:#000;box-shadow:0 12px 25px rgba(255,215,0,.18)}
+    .btn-cancel{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.16);color:#e5e7eb}
+    .btn-confirm:hover{transform:translateY(-1px)}
+    .btn-cancel:hover{background:rgba(255,255,255,.07)}
+    #twoStepError{margin-top:10px;color:#f87171;font-size:12.5px;display:none}
+
     /* responsive: table neeche */
     @media (max-width:1100px){
       .layout{grid-template-columns:1fr;}
@@ -144,7 +162,7 @@
           </div>
 
           <div class="row2">
-            <div>
+          <div>
               <label>Vendor Password</label>
               <input id="vendor_pass" type="text" placeholder="pass123" />
             </div>
@@ -152,6 +170,18 @@
               <label>Banquet Showcase Name</label>
               <input id="bankname" type="text" placeholder="Grand Hall" />
             </div>
+          </div>
+
+          <div class="row2">
+            <div>
+              <label>User Name (for this UID)</label>
+              <input id="user" type="text" placeholder="Noman" />
+            </div>
+            <div>
+              <label>Location Link</label>
+              <input id="bankloclink" type="text" placeholder="24.8607, 67.0011 or url" />
+            </div>
+          </div>
           </div>
 
           <div>
@@ -207,7 +237,6 @@
             <input id="imgFile" type="file" accept="image/*" multiple />
             <div class="loading-text" id="imgLoadingNotice">✨ Processing images...</div>
             <div class="preview-wrapper" id="previewContainer"></div>
-            <div class="hint">Note: Preview/order UI hai; Firebase me cover (index 0) save hota hai.</div>
           </div>
 
           <div class="actions">
@@ -245,7 +274,7 @@
           </script>
 
 
-          <div class="hint">Tip: Table ke buttons form fields fill kar dete hain. UID Firebase key hai.</div>
+          
         </div>
       </div>
 
@@ -266,12 +295,12 @@
                 <th style="width:120px">UID</th>
                 <th style="width:120px">Cover Image</th>
                 <th style="min-width:220px">Banquet Name</th>
+                <th style="min-width:220px">User Name</th>
                 <th style="min-width:220px">Contact</th>
                 <th style="min-width:200px">Vendor Username</th>
                 <th style="min-width:200px">Vendor Password</th>
                 <th style="min-width:160px">Start Date</th>
                 <th style="width:220px">Actions</th>
-
               </tr>
             </thead>
             <tbody id="tableBody"></tbody>
@@ -285,12 +314,111 @@
 
   <div id="toast" class="toast"></div>
 
+  <!-- 2-Step Auth Modal (Admin2) -->
+  <div id="twoStepOverlay" style="display:none">
+    <div id="twoStepModal" role="dialog" aria-modal="true" aria-labelledby="twoStepTitle">
+      <div class="twoStepTitle" id="twoStepTitle"><i class="fa-solid fa-shield-halved"></i> Enter 2-Step Authentication Key</div>
+
+      <div class="twoStepField">
+        <label for="twoStepKey">Authentication Key</label>
+        <input id="twoStepKey" type="password" autocomplete="off" placeholder="Enter key" />
+      </div>
+
+      <div id="twoStepError"></div>
+
+      <div class="twoStepActions">
+        <button class="btn-twoStep btn-cancel" id="twoStepCancel" type="button">Cancel</button>
+        <button class="btn-twoStep btn-confirm" id="twoStepConfirm" type="button">Verify</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { database } from "./firebaseconfig.js";
     import { ref, get, set, remove } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
+    // ---- 2-Step Auth Gate for admin2.html ----
+    const twoStepOverlay = document.getElementById('twoStepOverlay');
+    const twoStepKeyInput = document.getElementById('twoStepKey');
+    const twoStepConfirmBtn = document.getElementById('twoStepConfirm');
+    const twoStepCancelBtn = document.getElementById('twoStepCancel');
+    const twoStepError = document.getElementById('twoStepError');
+
+    function showTwoStepOverlay(){
+      if(!twoStepOverlay) return;
+      twoStepError && (twoStepError.style.display = 'none');
+      twoStepOverlay.style.display = 'flex';
+      // prevent background scroll (best-effort)
+      document.documentElement.style.overflow = 'hidden';
+      document.body.style.overflow = 'hidden';
+      setTimeout(()=>{ try{ twoStepKeyInput && twoStepKeyInput.focus(); }catch{} }, 0);
+    }
+
+    function hideTwoStepOverlay(){
+      if(!twoStepOverlay) return;
+      twoStepOverlay.style.display = 'none';
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    }
+
+    function setTwoStepError(msg){
+      if(!twoStepError) return;
+      if(!msg){
+        twoStepError.style.display = 'none';
+        twoStepError.textContent = '';
+        return;
+      }
+      twoStepError.textContent = msg;
+      twoStepError.style.display = 'block';
+    }
+
+    async function verifyTwoStepKey(){
+      try{
+        const entered = (twoStepKeyInput?.value || '').trim();
+        if(!entered){
+          setTwoStepError('Key required.');
+          twoStepKeyInput?.focus();
+          return;
+        }
+
+        // Fetch expected key from Firebase.
+        // Source of truth (as per haha.json): banquet/twostepauthkey is directly a value.
+        // But we still support object-form just in case.
+        const snap = await get(ref(database, 'banquet/twostepauthkey'));
+        const val = snap.val();
+
+        // support either string directly OR object with twostepauthkey/key field
+        const expected = (val != null && typeof val !== 'object')
+          ? val
+          : (val?.twostepauthkey ?? val?.key ?? '');
+
+
+        if(String(entered) === String(expected) && String(expected).trim() !== ''){
+          setTwoStepError('');
+          hideTwoStepOverlay();
+          return;
+        }
+
+        setTwoStepError('Invalid key. Redirecting...');
+        setTimeout(()=>{ window.location.href = 'login.html'; }, 900);
+      }catch(e){
+        console.error(e);
+        setTwoStepError('Verification failed. Redirecting...');
+        setTimeout(()=>{ window.location.href = 'login.html'; }, 900);
+      }
+    }
+
+    // show immediately on access
+    showTwoStepOverlay();
+
+    twoStepConfirmBtn?.addEventListener('click', verifyTwoStepKey);
+    twoStepCancelBtn?.addEventListener('click', ()=>{ window.location.href = 'login.html'; });
+    twoStepKeyInput?.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') verifyTwoStepKey(); });
+
+
     const COLS = [
       "UID","bankname","bankloclink","banktagline","bankloctext","bankwhatsapp",
+      "user",
       "vendor_user","vendor_pass","seasoncost","standardcost","specialisation",
       "startdate","ytlink","detail"
     ];
@@ -448,6 +576,7 @@
           </td>
 
           <td>${cellText(item.bankname)}</td>
+          <td>${cellText(item.user)}</td>
           <td>${cellText(item.bankwhatsapp)}</td>
           <td>${cellText(item.vendor_user)}</td>
           <td>${cellText(item.vendor_pass)}</td>
@@ -503,6 +632,7 @@
           banktagline: it.banktagline ?? "",
           bankloctext: it.bankloctext ?? "",
           bankwhatsapp: it.bankwhatsapp ?? "",
+          user: it.user ?? "",
           vendor_user: it.vendor_user ?? "",
           vendor_pass: it.vendor_pass ?? "",
           seasoncost: it.seasoncost ?? "",
@@ -529,27 +659,106 @@
     function applySearch(){
       const q = (document.getElementById("searchInput").value || "").toLowerCase().trim();
       const list = window.__allRecords || [];
-      if (!q) return renderTable(list);
 
-      const filtered = list.filter(r => (
-        String(r.UID).toLowerCase().includes(q) ||
-        String(r.bankname).toLowerCase().includes(q) ||
-        String(r.bankwhatsapp).toLowerCase().includes(q) ||
-        String(r.vendor_user).toLowerCase().includes(q) ||
-        String(r.vendor_pass).toLowerCase().includes(q)
-      ));
+      // If search is empty => show all records (also handle case where input contains only spaces)
+      if (q === "") return renderTable(list);
+
+
+      // Match across most visible + important fields
+      const filtered = list.filter(r => {
+        const uid = String(r.UID ?? "").toLowerCase();
+        const bankname = String(r.bankname ?? "").toLowerCase();
+        const user = String(r.user ?? "").toLowerCase();
+        const whatsapp = String(r.bankwhatsapp ?? "").toLowerCase();
+        const vendor_user = String(r.vendor_user ?? "").toLowerCase();
+        const vendor_pass = String(r.vendor_pass ?? "").toLowerCase();
+        const startdate = String(r.startdate ?? "").toLowerCase();
+        const bankloctext = String(r.bankloctext ?? "").toLowerCase();
+        const bankloclink = String(r.bankloclink ?? "").toLowerCase();
+        const ytlink = String(r.ytlink ?? "").toLowerCase();
+        const detail = String(r.detail ?? "").toLowerCase();
+
+        return (
+          uid.includes(q) ||
+          bankname.includes(q) ||
+          user.includes(q) ||
+          whatsapp.includes(q) ||
+          vendor_user.includes(q) ||
+          vendor_pass.includes(q) ||
+          startdate.includes(q) ||
+          bankloctext.includes(q) ||
+          bankloclink.includes(q) ||
+          ytlink.includes(q) ||
+          detail.includes(q)
+        );
+      });
 
       renderTable(filtered);
     }
+
 
     document.getElementById("searchInput").addEventListener("input", applySearch);
 
     document.getElementById("saveBtn").addEventListener("click", async () => {
       const data = getFormData();
 
-      // Validation: blank required fields
-      // User-facing names will be taken from the LABEL text above each input.
-      // (So alert shows: UID, Vendor Username, Vendor Password...)
+      // Validation: blank required fields + format checks for all text fields
+      const getFieldLabel = (key) => {
+        const map = {
+          UID: "UID",
+          vendor_user: "Vendor Username",
+          vendor_pass: "Vendor Password",
+          bankname: "Banquet Showcase Name",
+          bankloclink: "Location Link",
+          bankloctext: "Location Text",
+          bankwhatsapp: "Whatsapp",
+          startdate: "Start Date",
+          seasoncost: "Weekend Season Rate",
+          standardcost: "Standard Off-Peak Rate",
+          specialisation: "Specialisation",
+          ytlink: "YouTube Stream Link",
+          detail: "Detail",
+          user: "User Name",
+        };
+        return map[key] || key;
+      };
+
+      const normalizeText = (v) => (v == null ? "" : String(v).trim());
+
+      function isValidUID(v){
+        const s = normalizeText(v);
+        if(!s) return false;
+        return /^[a-zA-Z0-9._-]{3,64}$/.test(s);
+      }
+
+      function isLikelyUrl(v){
+        const s = normalizeText(v);
+        if(!s) return false;
+        return /^(https?:\/\/).+/.test(s) || /^(wa\.me\/).+/.test(s);
+      }
+
+      function validatePhoneLoose(v){
+        const s = normalizeText(v);
+        if(!s) return false;
+        return /^[+]?([0-9][0-9\s\-]{7,15})$/.test(s);
+      }
+
+      function parseMoneyLoose(v){
+        const s = normalizeText(v);
+        if(!s) return null;
+        const cleaned = s.replaceAll(',', '').replaceAll(' ', '');
+        const num = Number(cleaned);
+        if(!Number.isFinite(num)) return null;
+        return num;
+      }
+
+      function isValidDateInput(v){
+        const s = normalizeText(v);
+        if(!s) return false;
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+        return normalizeDate(s) != null;
+      }
+
       const requiredFields = [
         { key: "UID", label: "UID" },
         { key: "vendor_user", label: "Vendor Username" },
@@ -563,7 +772,8 @@
         { key: "standardcost", label: "Standard Off-Peak Rate" },
         { key: "specialisation", label: "Specialisation" },
         { key: "ytlink", label: "YouTube Stream Link" },
-        { key: "detail", label: "Detail" }
+        { key: "detail", label: "Detail" },
+        { key: "user", label: "User Name" }
       ];
 
 

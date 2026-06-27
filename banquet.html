@@ -200,6 +200,171 @@ body { background: radial-gradient(circle at 50% 0%, #0f172a 0%, #040811 80%); c
     .cal-day { font-size: 14px; }
 }
 
+/* Success Popup */
+
+.success-overlay{
+
+position:fixed;
+
+inset:0;
+
+background:rgba(0,0,0,.75);
+
+backdrop-filter:blur(10px);
+
+display:flex;
+
+justify-content:center;
+
+align-items:center;
+
+opacity:0;
+
+visibility:hidden;
+
+transition:.35s;
+
+z-index:99999;
+
+}
+
+.success-overlay.active{
+
+opacity:1;
+
+visibility:visible;
+
+}
+
+.success-box{
+
+width:420px;
+
+max-width:92%;
+
+background:#101827;
+
+border-radius:25px;
+
+padding:35px;
+
+text-align:center;
+
+border:1px solid rgba(255,215,0,.25);
+
+box-shadow:0 20px 60px rgba(255,215,0,.15);
+
+transform:scale(.75);
+
+transition:.35s;
+
+}
+
+.success-overlay.active .success-box{
+
+transform:scale(1);
+
+}
+
+.success-icon{
+
+width:95px;
+
+height:95px;
+
+margin:auto;
+
+border-radius:50%;
+
+display:flex;
+
+justify-content:center;
+
+align-items:center;
+
+font-size:45px;
+
+background:linear-gradient(135deg,#FFD700,#ffb300);
+
+color:#000;
+
+animation:pop .6s ease;
+
+}
+
+.success-box h2{
+
+color:#FFD700;
+
+margin-top:22px;
+
+margin-bottom:10px;
+
+}
+
+.success-box p{
+
+color:#ddd;
+
+line-height:1.7;
+
+margin-bottom:28px;
+
+}
+
+.success-box button{
+
+padding:15px 40px;
+
+border:none;
+
+border-radius:14px;
+
+font-size:16px;
+
+font-weight:bold;
+
+cursor:pointer;
+
+background:linear-gradient(135deg,#FFD700,#f5b301);
+
+transition:.3s;
+
+}
+
+.success-box button:hover{
+
+transform:translateY(-3px);
+
+box-shadow:0 12px 25px rgba(255,215,0,.35);
+
+}
+
+@keyframes pop{
+
+0%{
+
+transform:scale(.3) rotate(-30deg);
+
+opacity:0;
+
+}
+
+60%{
+
+transform:scale(1.2);
+
+}
+
+100%{
+
+transform:scale(1);
+
+opacity:1;
+
+}
+
+}
 </style>
 </head>
 <body>
@@ -303,12 +468,123 @@ body { background: radial-gradient(circle at 50% 0%, #0f172a 0%, #040811 80%); c
         <h3>Event Reservation</h3>
         <p id="targetModalDateDisplay">What event you are looking for?</p>
         <div class="event-options-container">
-            <button class="event-opt-btn" onclick="confirmEventSelection('Baraat')">Baraat <i class="fa-solid fa-chevron-right"></i></button>
-            <button class="event-opt-btn" onclick="confirmEventSelection('Valima')">Valima <i class="fa-solid fa-chevron-right"></i></button>
-            <button class="event-opt-btn" onclick="confirmEventSelection('Birthday')">Birthday <i class="fa-solid fa-chevron-right"></i></button>
-            <button class="event-opt-btn" onclick="confirmEventSelection('Ameen')">Ameen <i class="fa-solid fa-chevron-right"></i></button>
+            <button class="event-opt-btn" onclick="openTimeModal('Baraat')">Baraat <i class="fa-solid fa-chevron-right"></i></button>
+
+<button class="event-opt-btn" onclick="openTimeModal('Valima')">Valima <i class="fa-solid fa-chevron-right"></i></button>
+
+<button class="event-opt-btn" onclick="openTimeModal('Birthday')">Birthday <i class="fa-solid fa-chevron-right"></i></button>
+
+<button class="event-opt-btn" onclick="openTimeModal('Ameen')">Ameen <i class="fa-solid fa-chevron-right"></i></button>
         </div>
     </div>
+</div>
+
+<div class="event-modal-overlay" id="timeSelectionModal">
+
+<div class="event-modal">
+
+<button class="close-modal-x"
+onclick="closeTimeModal()">
+
+<i class="fa-solid fa-xmark"></i>
+
+</button>
+
+<h3>Select Time Slot</h3>
+
+<p>Please choose your preferred timing.</p>
+
+<div class="event-options-container">
+
+<button class="event-opt-btn"
+onclick="confirmTimeSelection('Morning')">
+
+🌅 Morning
+
+</button>
+
+<button class="event-opt-btn"
+onclick="confirmTimeSelection('Evening')">
+
+🌇 Evening
+
+</button>
+
+<button class="event-opt-btn"
+onclick="confirmTimeSelection('Night')">
+
+🌃 Night
+
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- PREMIUM USER DETAILS POPUP -->
+
+<div class="event-modal-overlay" id="userDetailsModal">
+
+    <div class="event-modal">
+
+        <button class="close-modal-x" onclick="closeUserDetailsModal()">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+
+        <h3>Complete Your Booking</h3>
+
+        <p id="bookingInfo"></p>
+
+        <div style="display:flex;flex-direction:column;gap:15px;margin-top:25px;">
+
+            <input
+                id="guestNameInput"
+                type="text"
+                placeholder="Full Name"
+                style="
+                padding:16px;
+                border-radius:15px;
+                border:1px solid rgba(255,255,255,.08);
+                background:#111827;
+                color:white;
+                font-size:15px;
+                outline:none;">
+
+            <input
+                id="guestPhoneInput"
+                type="tel"
+                placeholder="Phone Number"
+                style="
+                padding:16px;
+                border-radius:15px;
+                border:1px solid rgba(255,255,255,.08);
+                background:#111827;
+                color:white;
+                font-size:15px;
+                outline:none;">
+
+            <button
+                onclick="submitBookingRequest()"
+                style="
+                padding:16px;
+                border:none;
+                border-radius:15px;
+                background:linear-gradient(135deg,#ffd700,#f5b301);
+                color:black;
+                font-weight:bold;
+                font-size:16px;
+                cursor:pointer;">
+
+                Confirm Booking
+
+            </button>
+
+        </div>
+
+    </div>
+
 </div>
 
 <div class="lightbox" id="lightboxPanel" onclick="closeLightbox()">
@@ -449,7 +725,23 @@ function handleFloatingBookNow() {
     }, 320);
 }
 
+function showSuccessModal(){
 
+    document
+    .getElementById("successModal")
+    .classList
+    .add("active");
+
+}
+
+function closeSuccessModal(){
+
+    document
+    .getElementById("successModal")
+    .classList
+    .remove("active");
+
+}
 
 
 function togglePremiumCalendar() {
@@ -515,12 +807,12 @@ function renderUserCalendar() {
 }
 
 function openEventModal(dateKey) {
-    if (currentUserRole !== "guest") {
-        alert("ℹ️ Please log in as a Guest to request date reservations.");
-        return;
-    }
+
     targetedBookingDate = dateKey;
-    document.getElementById("targetModalDateDisplay").innerText = `What event are you looking for on ${dateKey}?`;
+
+    document.getElementById("targetModalDateDisplay").innerText =
+    `What event are you looking for on ${dateKey}?`;
+
     document.getElementById("eventSelectionModal").classList.add("active");
 }
 
@@ -528,38 +820,177 @@ function closeEventModal() {
     document.getElementById("eventSelectionModal").classList.remove("active");
 }
 
-function confirmEventSelection(eventType) {
+let selectedEventType = "";
+let selectedTimeSlot="";
+
+function closeUserDetailsModal(){
+
+    document
+    .getElementById("userDetailsModal")
+    .classList
+    .remove("active");
+
+}
+
+function openTimeModal(eventType){
+
     closeEventModal();
-    if (!targetedBookingDate) return;
 
-    let data = JSON.parse(localStorage.getItem("banquetData")) || {};
-/*  */    if (!data[targetIdKey]) return;
+    selectedEventType=eventType;
 
-    if (!data[targetIdKey].bookedDates) data[targetIdKey].bookedDates = [];
-    if (!data[targetIdKey].pendingDates) data[targetIdKey].pendingDates = [];
+    document
+    .getElementById("timeSelectionModal")
+    .classList
+    .add("active");
 
-    data[targetIdKey].pendingDates.push(targetedBookingDate);
+}
 
-    const guestName = localStorage.getItem("guestName") || "Anonymous Guest";
-    const guestPhone = localStorage.getItem("guestPhone") || "N/A";
+function closeTimeModal(){
 
-    let requests = JSON.parse(localStorage.getItem("globalBookingRequests")) || [];
+    document
+    .getElementById("timeSelectionModal")
+    .classList
+    .remove("active");
+
+}
+
+function confirmTimeSelection(time){
+
+    selectedTimeSlot=time;
+
+    closeTimeModal();
+
+    document.getElementById("bookingInfo").innerHTML=
+
+    "<b>Date :</b> "+targetedBookingDate+
+
+    "<br><br><b>Event :</b> "+selectedEventType+
+
+    "<br><br><b>Time :</b> "+selectedTimeSlot;
+
+    document
+    .getElementById("userDetailsModal")
+    .classList
+    .add("active");
+
+}
+
+function submitBookingRequest(){
+
+    const guestName=document
+    .getElementById("guestNameInput")
+    .value
+    .trim();
+
+    const guestPhone=document
+    .getElementById("guestPhoneInput")
+    .value
+    .trim();
+
+    if(!guestName){
+
+        alert("Please enter your name.");
+
+        return;
+
+    }
+
+    if(!guestPhone){
+
+        alert("Please enter phone number.");
+
+        return;
+
+    }
+
+    localStorage.setItem("guestName",guestName);
+
+    localStorage.setItem("guestPhone",guestPhone);
+
+    closeUserDetailsModal();
+
+
+
+    let data=JSON.parse(localStorage.getItem("banquetData"))||{};
+
+    if(!data[targetIdKey])return;
+
+    if(!data[targetIdKey].pendingDates)
+        data[targetIdKey].pendingDates=[];
+
+    if(!data[targetIdKey].pendingDates.includes(targetedBookingDate))
+        data[targetIdKey].pendingDates.push(targetedBookingDate);
+
+
+
+    let requests=JSON.parse(localStorage.getItem("globalBookingRequests"))||[];
+
     requests.push({
-        id: 'REQ_' + Date.now(),
-        banquetKey: targetIdKey,
-        banquetName: data[targetIdKey].title || "Grand Banquet Slot",
-        date: targetedBookingDate,
-        clientName: guestName,
-        clientPhone: guestPhone,
-        eventType: eventType,
-        status: "Pending"
+
+        id:"REQ_"+Date.now(),
+
+        banquetKey:targetIdKey,
+
+        banquetName:data[targetIdKey].title,
+
+        date:targetedBookingDate,
+
+        clientName:guestName,
+
+        clientPhone:guestPhone,
+
+        eventType:selectedEventType,
+
+        timeSlot:selectedTimeSlot,
+
+        status:"Pending"
+
     });
 
-    localStorage.setItem("banquetData", JSON.stringify(data));
-    localStorage.setItem("globalBookingRequests", JSON.stringify(requests));
 
-    alert(`✨ Premium Allocation Filed! Your request for "${eventType}" on date ${targetedBookingDate} is set to Pending.`);
+
+    localStorage.setItem("banquetData",JSON.stringify(data));
+
+    localStorage.setItem("globalBookingRequests",JSON.stringify(requests));
+
+
+
+    showSuccessModal();
+
+
+
     renderUserCalendar();
+
+}
+
+function confirmEventSelection(eventType){
+
+    closeEventModal();
+
+    selectedEventType=eventType;
+
+    document.getElementById("bookingInfo").innerHTML=
+
+    "<b>Date :</b> "+targetedBookingDate+
+
+    "<br><br><b>Event :</b> "+eventType;
+
+
+
+    document.getElementById("guestNameInput").value="";
+
+    document.getElementById("guestPhoneInput").value="";
+
+
+
+    document
+
+    .getElementById("userDetailsModal")
+
+    .classList
+
+    .add("active");
+
 }
 
 function changeMonth(direction) {
@@ -605,5 +1036,30 @@ window.onload = () => {
 };
 
 </script>
+
+<!-- Premium Success Modal -->
+
+<div class="success-overlay" id="successModal">
+
+    <div class="success-box">
+
+        <div class="success-icon">
+            <i class="fa-solid fa-circle-check"></i>
+        </div>
+
+        <h2>Booking Request Sent!</h2>
+
+        <p>
+            Your booking request has been submitted successfully.
+            Our team will review it shortly.
+        </p>
+
+        <button onclick="closeSuccessModal()">
+            Awesome
+        </button>
+
+    </div>
+
+</div>
 </body>
 </html>

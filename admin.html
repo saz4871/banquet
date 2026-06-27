@@ -239,6 +239,16 @@
                         <input type="text" id="bTitle" placeholder="e.g. Royal Gold Marquee">
                     </div>
                     <div class="form-group">
+                        <label>Banquet Location (text)</label>
+                        <input type="text" id="bLocation" placeholder="e.g. DHA Phase 8, Karachi">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Location Link (direct URL) <i class="fa-solid fa-arrow-up-right-from-square" style="color:#ffd700; margin-left:6px;"></i></label>
+                        <input type="text" id="bLocationLink" placeholder="e.g. https://maps.google.com/... or https://wa.me/...">
+                    </div>
+
+                    <div class="form-group">
                         <label>Premium Placement Tagline</label>
                         <input type="text" id="bTag" placeholder="e.g. DHA Phase 8 • Grand Luxury Setup">
                     </div>
@@ -354,9 +364,14 @@
                         <input type="text" id="hallTag" placeholder="e.g. DHA Phase 8 • Grand Luxury Setup">
                     </div>
                     <div class="form-group">
+                        <label>Hall Location (jahan pr location ayegi)</label>
+                        <input type="text" id="hallLocation" placeholder="e.g. DHA Phase 8, Karachi">
+                    </div>
+                    <div class="form-group">
                         <label>WhatsApp Hotwire Line</label>
                         <input type="text" id="hallPhone" placeholder="e.g. 923001234567">
                     </div>
+
 
                     <div class="form-group price-tier" style="border-color: rgba(255,215,0,0.4); margin-bottom: 20px;">
                         <label style="color:#ffd700; font-weight:700;"><i class="fa-solid fa-user-lock"></i> Vendor Account Access Pipeline</label>
@@ -1016,7 +1031,10 @@ function setupEdit(key) {
     document.getElementById("bKey").value = key;
     document.getElementById("bKey").disabled = true; 
     document.getElementById("bTitle").value = item.title;
+    document.getElementById("bLocation").value = item.location || "";
+    document.getElementById("bLocationLink").value = item.locationLink || "";
     document.getElementById("bTag").value = item.tag;
+
     document.getElementById("bPhone").value = item.phone || "";
     document.getElementById("vUser").value = item.vUser || "";
     document.getElementById("vPass").value = item.vPass || "";
@@ -1052,7 +1070,10 @@ function saveHall() {
 
     const title = document.getElementById("hallTitle").value.trim();
     const tag = document.getElementById("hallTag").value.trim();
+    const location = document.getElementById("hallLocation").value.trim();
     const phone = document.getElementById("hallPhone").value.trim();
+
+
     const vUser = document.getElementById("hallVUser").value.trim();
     const vPass = document.getElementById("hallVPass").value.trim();
     const seasonalPrice = document.getElementById("hallpSeasonal").value.trim();
@@ -1088,8 +1109,9 @@ function saveHall() {
     }
 
     data[key] = {
-        title, tag, phone, vUser, vPass,
+        title, tag, location, phone, vUser, vPass,
         img: uploadedHallImagesBase64[0],
+
         imagesStack: uploadedHallImagesBase64,
         views: finalViews,
         seasonalPrice, randomPrice,
@@ -1171,7 +1193,9 @@ function setupHallEdit(key) {
     document.getElementById("hallKey").disabled = true;
     document.getElementById("hallTitle").value = item.title;
     document.getElementById("hallTag").value = item.tag;
+    document.getElementById("hallLocation").value = item.location || "";
     document.getElementById("hallPhone").value = item.phone || "";
+
     document.getElementById("hallVUser").value = item.vUser || "";
     document.getElementById("hallVPass").value = item.vPass || "";
     document.getElementById("hallpSeasonal").value = item.seasonalPrice || "";
@@ -1281,8 +1305,11 @@ function saveBanquet() {
     }
 
     const title = document.getElementById("bTitle").value.trim();
+    const location = document.getElementById("bLocation").value.trim();
+    const locationLink = (document.getElementById("bLocationLink") ? document.getElementById("bLocationLink").value.trim() : "");
     const tag = document.getElementById("bTag").value.trim();
     const phone = document.getElementById("bPhone").value.trim();
+
     const vUser = document.getElementById("vUser").value.trim();
     const vPass = document.getElementById("vPass").value.trim();
     const seasonalPrice = document.getElementById("pSeasonal").value.trim();
@@ -1318,8 +1345,9 @@ function saveBanquet() {
     }
 
     data[key] = {
-        title, tag, phone, vUser, vPass,
+        title, location, locationLink, tag, phone, vUser, vPass,
         img: uploadedImagesBase64[0],
+
         imagesStack: uploadedImagesBase64,
         views: finalViews,
         seasonalPrice, randomPrice,
@@ -1370,6 +1398,9 @@ function resetForm() {
     document.getElementById("bKey").value = "";
     document.getElementById("bKey").disabled = false;
     document.getElementById("bTitle").value = "";
+    document.getElementById("bLocation").value = "";
+    document.getElementById("bLocationLink").value = "";
+
     document.getElementById("bTag").value = "";
     document.getElementById("bPhone").value = "";
     document.getElementById("vUser").value = "";

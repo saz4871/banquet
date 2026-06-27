@@ -2,63 +2,21 @@
 <html>
 <body>
     <h1>Banquet App</h1>
-    
-    <div>
-        <h3>Add New Entry</h3>
-        <input type="text" id="bankName" placeholder="Bank Name">
-        <input type="text" id="bankLoc" placeholder="Location">
-        <button id="addBtn">Add Entry</button>
-    </div>
-
-    <hr>
-
-    <h3>Banquet List</h3>
-    <table border="1" id="banquetTable">
-        <thead>
-            <tr>
-                <th>Bank Name</th>
-                <th>Location</th>
-            </tr>
-        </thead>
-        <tbody id="tableBody">
-            </tbody>
-    </table>
+    <button id="testBtn">Test Database</button>
 
     <script type="module">
+        // Sirf config file ko import karein
         import { database } from './firebase-config.js';
-        import { ref, get, set, push, child } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+        import { ref, get } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
 
-        const tableBody = document.getElementById('tableBody');
-
-        // Data Fetch karne ka function
-        async function loadData() {
-            const snapshot = await get(ref(database, 'banquet'));
-            tableBody.innerHTML = ""; // Purana data clear karein
-            
-            if (snapshot.exists()) {
-                snapshot.forEach((childSnapshot) => {
-                    const data = childSnapshot.val();
-                    tableBody.innerHTML += `<tr><td>${data.bankname}</td><td>${data.banklocnametext}</td></tr>`;
-                });
+        document.getElementById('testBtn').addEventListener('click', async () => {
+            try {
+                const snapshot = await get(ref(database, '/'));
+                alert("Connection Successful!");
+            } catch (error) {
+                alert("Connection Failed: " + error.message);
             }
-        }
-
-        // Data Add karne ka function
-        document.getElementById('addBtn').addEventListener('click', async () => {
-            const name = document.getElementById('bankName').value;
-            const loc = document.getElementById('bankLoc').value;
-
-            const newEntryRef = push(ref(database, 'banquet'));
-            await set(newEntryRef, {
-                bankname: name,
-                banklocnametext: loc
-            });
-            alert("Added Successfully!");
-            loadData(); // Table refresh karein
         });
-
-        // Page load hote hi data dikhayein
-        loadData();
     </script>
 </body>
 </html>

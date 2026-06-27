@@ -155,10 +155,11 @@ body { background: radial-gradient(circle at 50% 0%, #0f172a 0%, #040811 80%); c
 /* FLOATING PREMIUM BOOK BUTTON */
 .floating-calendar-btn {
     position: fixed;
-    right: 22px;
+    right: 30px; /* moved a bit to the right */
     left: auto;
     transform: none;
     bottom: 22px;
+
     z-index: 999;
 
     width: auto;
@@ -190,6 +191,46 @@ body { background: radial-gradient(circle at 50% 0%, #0f172a 0%, #040811 80%); c
 .floating-calendar-btn:hover { animation-play-state: paused; transform: translateX(-50%) translateY(-2px) scale(1.02); filter: brightness(1.04); }
 .floating-calendar-btn:active { animation-play-state: paused; transform: translateX(-50%) translateY(0px) scale(0.99); }
 .floating-calendar-btn i { font-size: 18px; }
+
+/* LOCATION BUTTON (blue, fixed cluster near Premium Book Now, no hover swipe) */
+#floatingPremiumLocationBtn {
+    right: 22px; bottom: 90px; animation: none; width: 52px; min-width: 52px; max-width: 52px; padding: 14px 0; background: linear-gradient(135deg, rgba(56,189,248,0.95), rgba(59,130,246,0.95)); border-color: rgba(56,189,248,0.75);
+
+
+    /* keep it circular + compact */
+    width: 52px;
+    min-width: 52px;
+    max-width: 52px;
+    padding: 14px 0;
+
+    animation: none; /* disable floatingGlow */
+
+    background: linear-gradient(135deg, rgba(0,114,255,1), rgba(0,198,255,1));
+    color: #fff;
+    border: 1px solid rgba(0,198,255,0.55);
+    box-shadow: 0 22px 55px rgba(0,0,0,0.6), 0 0 0 7px rgba(0,198,255,0.08);
+}
+
+/* Keep Premium Book Now aligned with Location button (same right edge) */
+#floatingPremiumBookBtn {
+    right: -78px !important;
+}
+
+#floatingPremiumLocationBtn i {
+    font-size: 18px;
+    color: #ffffff;
+}
+
+#floatingPremiumLocationBtn:hover {
+    animation: none !important;
+    transform: none !important; /* removes swipe-left/translateX(-50%) */
+    filter: brightness(1.05);
+}
+
+#floatingPremiumLocationBtn:active {
+    animation: none !important;
+    transform: none !important;
+}
 </style>
 
 </head>
@@ -223,6 +264,13 @@ body { background: radial-gradient(circle at 50% 0%, #0f172a 0%, #040811 80%); c
     <button class="floating-calendar-btn" id="floatingPremiumBookBtn" type="button" onclick="handleFloatingBookNow()">
         <i class="fa-solid fa-crown"></i> Premium Book Now
     </button>
+
+<!-- Location button: redirects to locationLink (desktop new tab, mobile same tab) -->
+    <button class="floating-calendar-btn" id="floatingPremiumLocationBtn" type="button" onclick="handleFloatingLocationRedirect()" aria-label="Location">
+        <i class="fa-solid fa-location-dot"></i>
+    </button>
+
+
 
     <div class="wide-box" id="overviewBox">
         <div class="section-title"><i class="fa-solid fa-feather-pointed" style="color:#ffd700;"></i> Editorial Narrative</div>
@@ -363,7 +411,9 @@ function bootLiveShowcaseSuite() {
     }
 
     document.getElementById("heroTitle").innerHTML = asset.title;
-    document.getElementById("heroTag").innerHTML = `<i class="fa-solid fa-location-dot"></i> ${asset.tag}`;
+    document.getElementById("heroTag").innerHTML = `<i class="fa-solid fa-location-dot"></i> ${asset.location || asset.tag}`;
+
+
     if(asset.desc) document.getElementById("hallDesc").innerText = asset.desc;
     document.getElementById("specStart").innerText = asset.startDate || "N/A";
     document.getElementById("specEnd").innerText = asset.endDate || "N/A";
@@ -442,7 +492,31 @@ function bootLiveShowcaseSuite() {
     });
 }
 
+function handleFloatingLocationRedirect() {
+    const data = JSON.parse(localStorage.getItem("hallData")) || {};
+    const asset = data[targetIdKey] || {};
+    const locationLink = (asset.locationLink || "").trim();
+    const locationText = (asset.location || "").trim();
+
+    if (locationLink) {
+        const isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (!isMobile) {
+            window.open(locationLink, "_blank", "noopener,noreferrer");
+        } else {
+            window.location.href = locationLink;
+        }
+        return;
+    }
+
+    if (locationText) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`;
+        window.location.href = mapsUrl;
+        return;
+    }
+}
+
 function handleFloatingBookNow() {
+
     const el = document.getElementById("collapsibleCalendar");
     if (!el) return;
 

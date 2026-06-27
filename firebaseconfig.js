@@ -1,6 +1,4 @@
-// firebaseconfig.js
-
-// CDN links ka use karein (ye direct browser mein kaam karte hain)
+// Sahi CDN links ka use karein taake browser import kar sake
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
@@ -15,8 +13,5 @@ const firebaseConfig = {
   measurementId: "G-QH80XEQH90"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// Database export karein
 export const database = getDatabase(app);

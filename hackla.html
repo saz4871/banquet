@@ -243,8 +243,15 @@
 
           <div>
             <label>Specialisation</label>
-            <input id="specialisation" type="text" placeholder="Wedding Events" />
+            <div class="checkbox-grid" id="specialisationBox">
+              <label class="check-item"><input type="checkbox" class="specChk" value="Luxury Seating Suite" /> Luxury Seating Suite</label>
+              <label class="check-item"><input type="checkbox" class="specChk" value="Master-Class Catering Team" /> Master-Class Catering Team</label>
+              <label class="check-item"><input type="checkbox" class="specChk" value="Monitoring CCTV Setup" /> Monitoring CCTV Setup</label>
+              <label class="check-item"><input type="checkbox" class="specChk" value="Custom Immersive Themes" /> Custom Immersive Themes</label>
+              <label class="check-item"><input type="checkbox" class="specChk" value="Premium Elite Valet System" /> Premium Elite Valet System</label>
+            </div>
           </div>
+
 
           <div>
             <label>YouTube Stream Link</label>
@@ -530,11 +537,19 @@
 
     function getFormData(){
       const data = {};
+
+      // 1) read all text/inputs from COLS
       for (const c of COLS) {
         const el = document.getElementById(c);
         if (!el) continue;
         data[c] = (c === "UID") ? el.value.trim() : el.value;
       }
+
+      // 2) build specialisation string from checkboxes (comma-separated)
+      const selected = Array.from(document.querySelectorAll('#specialisationBox .specChk:checked'))
+        .map(chk => String(chk.value).trim())
+        .filter(Boolean);
+      data.specialisation = selected.join(', ');
 
       if (data.startdate && !/^\d{4}-\d{2}-\d{2}$/.test(String(data.startdate))) {
         try { data.startdate = new Date(data.startdate).toISOString().split('T')[0]; } catch {}
@@ -542,15 +557,30 @@
       return data;
     }
 
+
     function setFormData(obj){
       for (const c of COLS) {
         const el = document.getElementById(c);
         if (!el) continue;
         el.value = (obj && obj[c] != null) ? obj[c] : "";
       }
+
+      // reflect specialisation string -> checkboxes
+      const spStr = String(obj?.specialisation || "");
+      const selectedSet = new Set(spStr.split(',').map(s => s.trim()).filter(Boolean));
+
+      document.querySelectorAll('#specialisationBox .specChk').forEach(chk => {
+        chk.checked = selectedSet.has(String(chk.value).trim());
+      });
     }
 
-    function clearForm(){ setFormData({}); }
+
+    function clearForm(){
+      setFormData({});
+      // ensure specialisation checkboxes reset too
+      document.querySelectorAll('#specialisationBox .specChk').forEach(chk => chk.checked = false);
+    }
+
 
     function escapeHtml(s){
       return String(s ?? "")
@@ -803,10 +833,16 @@
 
       const missing = requiredFields
         .filter(({ key }) => {
+          // For specialisation, we require at least 1 checkbox selected
+          if (key === 'specialisation') {
+            const selectedCount = document.querySelectorAll('#specialisationBox .specChk:checked').length;
+            return selectedCount < 1;
+          }
           const v = data[key];
           return v == null || String(v).trim() === "";
         })
         .map(({ label }) => label);
+
 
       if (missing.length) {
         const listText = missing.map((x) => `- ${x}`).join("\n");

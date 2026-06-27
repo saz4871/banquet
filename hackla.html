@@ -160,14 +160,10 @@
           </div>
 
           <div>
-            <label>Tagline</label>
-            <input id="banktagline" type="text" placeholder="https://maps.google.com/... or tagline" />
-          </div>
-
-          <div>
             <label>Location Text</label>
             <input id="bankloctext" type="text" placeholder="Main Road, Karachi" />
           </div>
+
 
           <div class="row2">
             <div>
@@ -215,10 +211,39 @@
           </div>
 
           <div class="actions">
-            <button class="btn-primary" id="saveBtn"><i class="fa-solid fa-floppy-disk"></i> Save/Update</button>
+        <button class="btn-primary" id="saveBtn"><i class="fa-solid fa-floppy-disk"></i> Save/Update</button>
 
             <button class="btn-ghost" id="clearBtn"><i class="fa-solid fa-broom"></i> Clear</button>
           </div>
+
+          <script>
+            // make UID uneditable during edit mode until Save/Update or Clear
+            (function(){
+              const uidEl = document.getElementById('UID');
+              const saveBtn = document.getElementById('saveBtn');
+              const clearBtn = document.getElementById('clearBtn');
+
+              // called when table Edit button is pressed (we detect it inside delegated click)
+              window.__admin2_setUidEditableMode = function({editing}){
+                if(!uidEl) return;
+                if(editing){
+                  uidEl.disabled = true;
+                  uidEl.dataset.prevDisabled = 'true';
+                } else {
+                  uidEl.disabled = false;
+                  delete uidEl.dataset.prevDisabled;
+                }
+              };
+
+              if(saveBtn){
+                saveBtn.addEventListener('click', ()=>window.__admin2_setUidEditableMode({editing:false}));
+              }
+              if(clearBtn){
+                clearBtn.addEventListener('click', ()=>window.__admin2_setUidEditableMode({editing:false}));
+              }
+            })();
+          </script>
+
 
           <div class="hint">Tip: Table ke buttons form fields fill kar dete hain. UID Firebase key hai.</div>
         </div>
@@ -531,7 +556,6 @@
         { key: "vendor_pass", label: "Vendor Password" },
         { key: "bankname", label: "Banquet Showcase Name" },
         { key: "bankloclink", label: "Location Link" },
-        { key: "banktagline", label: "Tagline" },
         { key: "bankloctext", label: "Location Text" },
         { key: "bankwhatsapp", label: "Whatsapp" },
         { key: "startdate", label: "Start Date" },
@@ -541,6 +565,7 @@
         { key: "ytlink", label: "YouTube Stream Link" },
         { key: "detail", label: "Detail" }
       ];
+
 
       const missing = requiredFields
         .filter(({ key }) => {
@@ -771,7 +796,13 @@
         renderPreviews();
 
         toast(action === "view" ? "Loaded (View mode)" : "Edit loaded");
+
+        // if it's edit mode, UID ko uneditable kar do
+        if (typeof window.__admin2_setUidEditableMode === 'function') {
+          window.__admin2_setUidEditableMode({ editing: action === "edit" });
+        }
       }
+
 
       if (action === "del") {
         if (!uid) return;

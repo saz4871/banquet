@@ -146,7 +146,7 @@ body { background: radial-gradient(circle at 50% 0%, #0f172a 0%, #040811 80%); c
     position: fixed;
     right: 22px;
     left: auto;
-    transform: none;
+    transform: translateX(0);
     bottom: 22px;
     z-index: 999;
 
@@ -171,15 +171,15 @@ body { background: radial-gradient(circle at 50% 0%, #0f172a 0%, #040811 80%); c
     animation: floatingGlow 2.2s ease-in-out infinite;
 }
 
-
 @keyframes floatingGlow {
-    0%, 100% { transform: translateX(-50%) translateY(0px); filter: brightness(1); }
-    50% { transform: translateX(-50%) translateY(-4px); filter: brightness(1.06); }
+    0%, 100% { transform: translateY(0px); filter: brightness(1); }
+    50% { transform: translateY(-4px); filter: brightness(1.06); }
 }
 
-.floating-calendar-btn:hover { animation-play-state: paused; transform: translateX(-50%) translateY(-2px) scale(1.02); filter: brightness(1.04); }
-.floating-calendar-btn:active { animation-play-state: paused; transform: translateX(-50%) translateY(0px) scale(0.99); }
+.floating-calendar-btn:hover { animation-play-state: paused; transform: translateY(-2px) scale(1.02); filter: brightness(1.04); }
+.floating-calendar-btn:active { animation-play-state: paused; transform: translateY(0px) scale(0.99); }
 .floating-calendar-btn i { font-size: 18px; }
+
 
 
 @media (max-width: 768px) {
@@ -400,6 +400,16 @@ opacity:1;
 <button class="floating-calendar-btn" id="floatingPremiumBookBtn" type="button" onclick="handleFloatingBookNow()">
     <i class="fa-solid fa-crown"></i> Premium Book Now
 </button>
+
+<!-- Location button: redirects to locationLink (desktop new tab, mobile same tab) -->
+<button class="floating-calendar-btn" id="floatingPremiumLocationBtn" type="button" onclick="handleFloatingLocationRedirect()" style="right: 22px; bottom: 90px; animation: none; width: 52px; min-width: 52px; max-width: 52px; padding: 14px 0; background: linear-gradient(135deg, rgba(56,189,248,0.95), rgba(59,130,246,0.95)); border-color: rgba(56,189,248,0.75);">
+    <i class="fa-solid fa-location-dot"></i>
+</button>
+
+
+
+
+
 
     <div class="wide-box" id="overviewBox">
         <div class="section-title"><i class="fa-solid fa-feather-pointed" style="color:#ffd700;"></i> Editorial Narrative</div>
@@ -709,9 +719,72 @@ function bootLiveShowcaseSuite() {
     });
 }
 
+function handleFloatingLocationRedirect() {
+    const data = JSON.parse(localStorage.getItem("banquetData")) || {};
+    const asset = data[targetIdKey] || {};
+    const locationLink = (asset.locationLink || "").trim();
+    const locationText = (asset.location || "").trim();
+
+    if (locationLink) {
+        const isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (!isMobile) {
+            window.open(locationLink, "_blank", "noopener,noreferrer");
+        } else {
+            window.location.href = locationLink;
+        }
+        return;
+    }
+
+    if (locationText) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`;
+        window.location.href = mapsUrl;
+        return;
+    }
+}
+
 function handleFloatingBookNow() {
     const el = document.getElementById("collapsibleCalendar");
     if (!el) return;
+
+    // Location/visit redirect (desktop opens new tab, mobile navigates same tab)
+    const data = JSON.parse(localStorage.getItem("banquetData")) || {};
+    const asset = data[targetIdKey] || {};
+    const locationLink = (asset.locationLink || "").trim();
+    const locationText = (asset.location || "").trim();
+
+    if (locationLink) {
+        const isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (!isMobile) {
+            window.open(locationLink, "_blank", "noopener,noreferrer");
+        } else {
+            window.location.href = locationLink;
+        }
+        return;
+    }
+
+    // Fallback: if no direct link, try opening Google Maps with the text location
+    if (locationText) {
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`;
+        window.location.href = mapsUrl;
+        return;
+    }
+
+    // If location not configured, keep original behavior (expand calendar)
+
+
+
+    if (!el.classList.contains("expanded")) {
+        el.classList.add("expanded");
+    }
+
+    // Scroll after expand animation starts/finishes
+    setTimeout(() => {
+        const panel = document.getElementById('hotwirePanel') || el;
+        panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 320);
+
+    if (!el) return;
+
 
     // If calendar is not expanded, expand it first
     if (!el.classList.contains("expanded")) {
@@ -764,11 +837,38 @@ function togglePremiumCalendar() {
 }
 
 
+function getTimeAvailabilityForDate(asset, dateKey) {
+    // New slot-wise model (recommended)
+    // asset.bookedSlots = { "YYYY-MM-DD": { morning:true/false, evening:true/false, night:true/false } }
+    // asset.pendingSlots = same structure
+    const bookedSlots = asset.bookedSlots || {};
+    const pendingSlots = asset.pendingSlots || {};
+
+    const bookedForDay = bookedSlots[dateKey] || {};
+    const pendingForDay = pendingSlots[dateKey] || {};
+
+    const allSlots = ["morning", "evening", "night"];
+
+    const slotBooked = (slot) => !!bookedForDay[slot];
+    const slotPending = (slot) => !!pendingForDay[slot];
+
+    const bookedCount = allSlots.filter(slot => slotBooked(slot)).length;
+    const pendingCount = allSlots.filter(slot => slotPending(slot)).length;
+
+    return {
+        slotBooked,
+        slotPending,
+        bookedCount,
+        pendingCount,
+        allBooked: bookedCount === allSlots.length
+    };
+}
+
 function renderUserCalendar() {
     const year = currentCalDate.getFullYear();
     const month = currentCalDate.getMonth();
     document.getElementById("calendarMonthYear").innerText = `${monthNames[month]} ${year}`;
-    
+
     const firstDayIndex = new Date(year, month, 1).getDay();
     const totalDays = new Date(year, month + 1, 0).getDate();
     const grid = document.getElementById("userCalendarDaysGrid");
@@ -776,8 +876,22 @@ function renderUserCalendar() {
 
     const data = JSON.parse(localStorage.getItem("banquetData")) || {};
     const asset = data[targetIdKey] || {};
+
+    // Backward compatibility: existing per-date model
     const bookedDates = asset.bookedDates || [];
     const pendingDates = asset.pendingDates || [];
+
+    // For slot-level marking we need slot-wise structure.
+    // If slot-wise is missing, we fallback to date-level behavior.
+    const hasSlotWise = !!(asset.bookedSlots || asset.pendingSlots);
+
+    // NOTE: booking UX requirement:
+    // - User should always be able to open Valima/Baraat/etc modal for a date
+    // - Time-slot modal buttons must become unselectable ONLY for booked slots
+    // - Calendar red highlighting should happen only when ALL three slots are booked (slot-wise)
+    //   (Date-level fallback keeps existing behavior.)
+
+
 
     for (let i = 0; i < firstDayIndex; i++) {
         const emptyCell = document.createElement("div");
@@ -792,21 +906,82 @@ function renderUserCalendar() {
 
         const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-        if (bookedDates.includes(dateKey)) {
-            dayCell.classList.add("booked");
-        } else if (pendingDates.includes(dateKey)) {
-            dayCell.classList.add("pending");
-        } else {
-            dayCell.classList.add("available");
-            dayCell.onclick = function() {
-                openEventModal(dateKey);
-            };
+        if (!hasSlotWise) {
+            if (bookedDates.includes(dateKey)) {
+                dayCell.classList.add("booked");
+            } else if (pendingDates.includes(dateKey)) {
+                dayCell.classList.add("pending");
+            } else {
+                dayCell.classList.add("available");
+                dayCell.onclick = function() { openEventModal(dateKey); };
+            }
+            grid.appendChild(dayCell);
+            continue;
         }
+
+        const avail = getTimeAvailabilityForDate(asset, dateKey);
+
+        if (avail.allBooked) {
+            // all morning+evening+night are unavailable => red and unselectable
+            dayCell.classList.add("booked");
+            // ensure blocked on click
+            dayCell.onclick = function() { alert("Sorry selected date not available"); };
+        } else {
+
+            // partially available => allow selection (not red)
+            // (If at least one slot is pending and none are booked, you may still want yellow; keeping current visual mapping)
+            if (avail.pendingCount > 0 && avail.pendingCount === (avail.bookedCount ? 0 : avail.pendingCount)) {
+                dayCell.classList.add("pending");
+            } else {
+                dayCell.classList.add("available");
+            }
+            dayCell.onclick = function() { openEventModal(dateKey); };
+        }
+
+        dayCell.dataset.dateKey = dateKey;
         grid.appendChild(dayCell);
     }
 }
 
+function isAnySlotAvailableForTargetDate(dateKey) {
+    const data = JSON.parse(localStorage.getItem("banquetData")) || {};
+    const asset = data[targetIdKey] || {};
+
+    const bookedSlots = asset.bookedSlots || {};
+    const pendingSlots = asset.pendingSlots || {};
+
+    // If slot-wise model absent, keep old behavior
+    if (!asset.bookedSlots && !asset.pendingSlots) {
+        const bookedDates = asset.bookedDates || [];
+        const pendingDates = asset.pendingDates || [];
+        // bookedDates => fully blocked
+        if (bookedDates.includes(dateKey)) return false;
+        return true;
+    }
+
+    const bookedForDay = bookedSlots[dateKey] || {};
+    const pendingForDay = pendingSlots[dateKey] || {};
+    const allSlots = ["morning", "evening", "night"];
+
+    // unavailable if booked=true for that slot
+    // pending does not block selection (calendar shows yellow), but confirmTimeSelection will block only when booked.
+    const anyBooked = allSlots.some(s => !!bookedForDay[s]);
+    const anySlotFree = allSlots.some(s => !bookedForDay[s]);
+
+    // If all three are booked, block selection
+    if (allSlots.every(s => !!bookedForDay[s])) return false;
+    // Otherwise allow (even if some slots are pending/available)
+    return anySlotFree || anyBooked;
+}
+
 function openEventModal(dateKey) {
+
+    // Hard block when ALL slots are unavailable
+    const ok = isAnySlotAvailableForTargetDate(dateKey);
+    if (!ok) {
+        alert("Sorry selected date not available");
+        return;
+    }
 
     targetedBookingDate = dateKey;
 
@@ -854,7 +1029,30 @@ function closeTimeModal(){
 
 }
 
+function isSlotBookedForTargetDate(timeSlot, dateKey) {
+
+    const data = JSON.parse(localStorage.getItem("banquetData")) || {};
+    const asset = data[targetIdKey] || {};
+
+    const bookedSlots = asset.bookedSlots || {};
+
+    // If slot-wise not present, fall back to fully booked behavior using bookedDates
+    if (!asset.bookedSlots && !asset.pendingSlots) {
+        const bookedDates = asset.bookedDates || [];
+        return bookedDates.includes(dateKey);
+    }
+
+    const dayBooked = bookedSlots[dateKey] || {};
+    return !!dayBooked[timeSlot];
+}
+
 function confirmTimeSelection(time){
+
+    // block if this specific slot is unavailable
+    if (isSlotBookedForTargetDate(time, targetedBookingDate)) {
+        alert("Sorry selected date not available");
+        return;
+    }
 
     selectedTimeSlot=time;
 

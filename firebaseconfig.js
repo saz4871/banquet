@@ -1,11 +1,9 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+// firebaseconfig.js
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// CDN links ka use karein (ye direct browser mein kaam karte hain)
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+
 const firebaseConfig = {
   apiKey: "AIzaSyBDmjfsZcQ_cqH_SAXBfg6-BIACbs_jtUw",
   authDomain: "banquet-744d0.firebaseapp.com",
@@ -19,7 +17,6 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 
-export { app, analytics, firebaseConfig };
-
+// Database export karein
+export const database = getDatabase(app);

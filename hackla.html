@@ -1,35 +1,64 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Firebase Check</title>
-</head>
+<html>
 <body>
-    <h2>Firebase Connection Checker</h2>
-    <button id="checkBtn">Connection Check Karein</button>
-    <h3 id="resultText">Status: Pending...</h3>
+    <h1>Banquet App</h1>
+    
+    <div>
+        <h3>Add New Entry</h3>
+        <input type="text" id="bankName" placeholder="Bank Name">
+        <input type="text" id="bankLoc" placeholder="Location">
+        <button id="addBtn">Add Entry</button>
+    </div>
+
+    <hr>
+
+    <h3>Banquet List</h3>
+    <table border="1" id="banquetTable">
+        <thead>
+            <tr>
+                <th>Bank Name</th>
+                <th>Location</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+            </tbody>
+    </table>
 
     <script type="module">
-        // Import database from your config file
-        import { database } from './firebaseconfig.js';
-        import { ref, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+        import { database } from './firebase-config.js';
+        import { ref, get, set, push, child } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
 
-        document.getElementById('checkBtn').addEventListener('click', async () => {
-            const resultText = document.getElementById('resultText');
+        const tableBody = document.getElementById('tableBody');
+
+        // Data Fetch karne ka function
+        async function loadData() {
+            const snapshot = await get(ref(database, 'banquet'));
+            tableBody.innerHTML = ""; // Purana data clear karein
             
-            try {
-                // Root reference check
-                const dbRef = ref(database, '/');
-                await get(dbRef);
-                
-                resultText.innerText = "Status: Connection Successful! ✅";
-                resultText.style.color = "green";
-            } catch (error) {
-                resultText.innerText = "Status: Connection Failed! ❌";
-                resultText.style.color = "red";
-                console.error("Error:", error);
+            if (snapshot.exists()) {
+                snapshot.forEach((childSnapshot) => {
+                    const data = childSnapshot.val();
+                    tableBody.innerHTML += `<tr><td>${data.bankname}</td><td>${data.banklocnametext}</td></tr>`;
+                });
             }
+        }
+
+        // Data Add karne ka function
+        document.getElementById('addBtn').addEventListener('click', async () => {
+            const name = document.getElementById('bankName').value;
+            const loc = document.getElementById('bankLoc').value;
+
+            const newEntryRef = push(ref(database, 'banquet'));
+            await set(newEntryRef, {
+                bankname: name,
+                banklocnametext: loc
+            });
+            alert("Added Successfully!");
+            loadData(); // Table refresh karein
         });
+
+        // Page load hote hi data dikhayein
+        loadData();
     </script>
 </body>
 </html>

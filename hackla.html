@@ -1,22 +1,35 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Firebase Check</title>
+</head>
 <body>
-    <h1>Banquet App</h1>
-    <button id="testBtn">Test Database</button>
+    <h2>Firebase Connection Checker</h2>
+    <button id="checkBtn">Connection Check Karein</button>
+    <h3 id="resultText">Status: Pending...</h3>
 
     <script type="module">
-        // Sirf config file ko import karein
-        import { database } from './firebase-config.js';
-        import { ref, get } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+        // Import database from your config file
+        import { database } from './firebaseconfig.js';
+        import { ref, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-        document.getElementById('testBtn').addEventListener('click', async () => {
+        document.getElementById('checkBtn').addEventListener('click', async () => {
+            const resultText = document.getElementById('resultText');
+            
             try {
-                const snapshot = await get(ref(database, '/'));
-                alert("Connection Successful!");
+                // Root reference check
+                const dbRef = ref(database, '/');
+                await get(dbRef);
+                
+                resultText.innerText = "Status: Connection Successful! ✅";
+                resultText.style.color = "green";
             } catch (error) {
-                alert("Connection Failed: " + error.message);
+                resultText.innerText = "Status: Connection Failed! ❌";
+                resultText.style.color = "red";
+                console.error("Error:", error);
             }
         });
     </script>
 </body>
-</html> 
+</html>

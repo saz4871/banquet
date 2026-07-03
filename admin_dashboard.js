@@ -2394,4 +2394,3 @@ window.exportTableToPDF = async function (tableId) {
     win.print();
   }, 250);
 };
-

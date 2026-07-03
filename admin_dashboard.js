@@ -244,8 +244,20 @@ const viewHtmlByKey = {
 
   "hall-spreadsheet": `
     <div class="cardish">
-      <div style="display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center;">
-        <input type="text" id="searchInput" placeholder="Search records..." style="padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 15px; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div style="display:flex; gap:12px; align-items:center; flex-wrap: wrap;">
+          <label style="display:flex; align-items:center; gap:8px; color: var(--muted); font-weight:700;">
+            <span>Status:</span>
+            <select id="hallStatusFilter" style="padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);">
+              <option value="all" selected>All</option>
+              <option value="active">Active</option>
+              <option value="expired">Expired</option>
+            </select>
+          </label>
+
+          <input type="text" id="searchInput" placeholder="Search records..." style="padding: 8px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);">
+        </div>
+
         <button onclick="exportTableToPDF('hallTable')" class="a-btn">Export PDF</button>
       </div>
       <div style="overflow-x: auto; padding-bottom: 10px;">
@@ -1341,16 +1353,24 @@ function applyHallSpreadsheetFilters() {
   const tbody = table.querySelector('tbody');
   if (!tbody) return;
 
+  const statusSel = document.getElementById('hallStatusFilter');
+  const status = statusSel ? String(statusSel.value || 'all').toLowerCase() : 'all';
+
   const searchEl = document.getElementById('searchInput');
   const search = searchEl ? String(searchEl.value || '').toLowerCase().trim() : '';
 
   const rows = Array.from(tbody.querySelectorAll('tr'));
   rows.forEach((tr) => {
+    const rowStatus = String(tr.dataset.status || 'unknown').toLowerCase();
+    const matchesStatus = status === 'all' ? true : rowStatus === status;
+
     const text = (tr.textContent || '').toLowerCase();
     const matchesSearch = !search ? true : text.includes(search);
-    tr.style.display = matchesSearch ? '' : 'none';
+
+    tr.style.display = matchesStatus && matchesSearch ? '' : 'none';
   });
 }
+
 
 async function clearHallManagementForm() {
   const setVal = (id, v) => {
@@ -1924,6 +1944,7 @@ async function loadHallSpreadsheetRows() {
         : `<span style="color: var(--muted)">N/A</span>`;
 
       const trEl = document.createElement('tr');
+      trEl.dataset.status = rowStatus;
       trEl.style.borderBottom = '1px solid rgba(251, 113, 133, 0.18)';
 
       trEl.innerHTML = `
@@ -2302,10 +2323,21 @@ document.addEventListener('input', function (e) {
 
 document.addEventListener('change', function (e) {
   if (!e.target) return;
+
   if (e.target.id === 'banquetStatusFilter') {
     applyBanquetSpreadsheetFilters();
+    return;
+  }
+
+  if (e.target.id === 'hallStatusFilter') {
+    applyHallSpreadsheetFilters();
+    return;
   }
 });
+
+
+
+
 
 
 

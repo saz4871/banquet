@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Portfolio | Premium Luxury</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+  <link rel="stylesheet" href="portfolio.css" />
+</head>
+<body>
+
+  <div class="hero-slider-container">
+    <div class="hero-bg-images" aria-hidden="true" id="heroBgImageGallery"></div>
+
+    <!-- Image View overlay controls -->
+
+
+    <button id="heroImageViewBtn" type="button" class="hero-image-view-btn hero-image-view-btn--bottom-left" aria-label="View image in HD">
+      <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+      <span>View Image</span>
+    </button>
+
+
+
+
+
+    <div class="hero-text">
+
+      <h1 id="heroTitle">Loading...</h1>
+      <div id="heroLocationText" class="hero-location-text" style="margin-top:8px; font-size:14px; opacity:.85;">Location: Loading...</div>
+
+
+    </div>
+
+  </div>
+
+  <div class="content-wrapper">
+    <!-- Details -->
+    <div class="wide-box" id="overviewBox">
+      <div class="section-title"><i class="fa-solid fa-feather-pointed" style="color:#ffd700;"></i> Details</div>
+      <p class="desc-text" id="banquetDesc">Loading...</p>
+    </div>
+
+    <!-- Specialisation -->
+    <div class="wide-box" id="specialisationBox">
+      <div class="section-title"><i class="fa-solid fa-feather-pointed" style="color:#ffd700;"></i> Specialisation</div>
+      <p class="desc-text" id="specialisationDesc">Loading...</p>
+    </div>
+
+    <!-- Price Pipeline -->
+    <div class="wide-box" id="pricePanel">
+      <div class="section-title"><i class="fa-solid fa-bolt" style="color:#ffd700;"></i> Rate</div>
+      <div class="price-display-wrapper">
+        <div class="price-block">
+          <span>Seasonal Rate</span>
+          <h2 id="viewSeasonal">Rs. 0</h2>
+        </div>
+        <div class="price-block">
+          <span>Standard Rate</span>
+          <h2 id="viewStandard">Rs. 0</h2>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cinematic Box -->
+    <div class="wide-box" id="cinematicBox" style="display:none;">
+      <div class="section-title"><i class="fa-solid fa-video" style="color:#ffd700;"></i> Cinematic Stream</div>
+      <div class="video-wrapper">
+        <iframe id="videoIframe" src="" allowfullscreen></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Calendar Pane -->
+  <div id="calendarPane" class="calendar-pane" aria-live="polite">
+    <div class="calendar-pane__header">
+      <div class="section-title" style="margin:0; font-size:18px; padding-left:12px; border-left-width:3px;">
+        <i class="fa-solid fa-calendar-days" style="color:#ffd700;"></i> Pick a Date
+      </div>
+      <div class="calendar-pane__sub">Morning / Evening / Night selection ke hisaab se calendar yahin switch hoga.</div>
+
+      <!-- Bottom dropdown (Morning/Evening/Night) -->
+      <div class="calendar-bottom-time-select" aria-label="Pick Event Time">
+        <!-- Custom dropdown (native select ko replace kiya for premium UI) -->
+        <button
+          id="bottomEventTimeDropdownBtn"
+          type="button"
+          class="calendar-dd-btn"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-controls="bottomEventTimeDropdownList"
+        >
+          <span id="bottomEventTimeDropdownLabel">Morning</span>
+          <span class="calendar-dd-caret" aria-hidden="true">▾</span>
+        </button>
+
+        <div
+          id="bottomEventTimeDropdownList"
+          class="calendar-dd-list"
+          role="listbox"
+          aria-label="Event Time"
+        >
+          <div class="calendar-dd-option" role="option" data-value="Morning" tabindex="0">Morning</div>
+          <div class="calendar-dd-option" role="option" data-value="Evening" tabindex="0">Evening</div>
+          <div class="calendar-dd-option" role="option" data-value="Night" tabindex="0">Night</div>
+        </div>
+
+        <!-- Hidden input jisse existing JS easier re-use kar sake -->
+        <input type="hidden" id="bottomEventTimeSelect" value="Morning" />
+      </div>
+
+    </div>
+
+
+    <div class="calendar-pane__body">
+      <div class="calendar-block" id="calendarMorning" data-calendar="Morning">
+        <div class="calendar-topbar">
+          <div class="calendar-month" data-month-label="Morning">Morning Calendar</div>
+        </div>
+        <div class="calendar-grid" data-calendar-grid>
+          <div class="calendar-weekdays">
+            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+          </div>
+          <div class="calendar-days"></div>
+        </div>
+      </div>
+
+      <div class="calendar-block" id="calendarEvening" data-calendar="Evening" style="display:none;">
+        <div class="calendar-topbar">
+          <div class="calendar-month" data-month-label="Evening">Evening Calendar</div>
+        </div>
+        <div class="calendar-grid" data-calendar-grid>
+          <div class="calendar-weekdays">
+            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+          </div>
+          <div class="calendar-days"></div>
+        </div>
+      </div>
+
+      <div class="calendar-block" id="calendarNight" data-calendar="Night" style="display:none;">
+        <div class="calendar-topbar">
+          <div class="calendar-month" data-month-label="Night">Night Calendar</div>
+        </div>
+        <div class="calendar-grid" data-calendar-grid>
+          <div class="calendar-weekdays">
+            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+          </div>
+          <div class="calendar-days"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating BOOK NOW button -->
+  <button id="bookNowBtn" type="button" onclick="try{localStorage.setItem('pendingOpenBookingFlow','1');}catch(e){} window.dispatchEvent(new Event('bookNowClicked'));">BOOK NOW</button>
+
+
+  <!-- Event Time Modal -->
+  <div id="eventTimeModalOverlay" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="eventTimeTitle">
+      <div class="modal-glow" aria-hidden="true"></div>
+      <div class="modal-header">
+        <div class="modal-icon"> <i class="fa-solid fa-crown"></i> </div>
+        <div>
+          <h2 id="eventTimeTitle">Event Time</h2>
+          <p class="modal-subtitle">Morning or Evening — select your vibe.</p>
+        </div>
+        <button id="eventTimeModalCloseX" class="modal-close-x" type="button" aria-label="Close">&times;</button>
+      </div>
+
+      <!-- Event time (full-width pane remove extra spacing) -->
+      <div class="event-time-options" role="radiogroup" aria-label="Event Time">
+        <div class="event-time-dropdown event-time-dropdown-full">
+          <select id="eventTimeSelect" class="event-time-select" aria-label="Event Time">
+            <option value="Morning">Morning</option>
+            <option value="Evening">Evening</option>
+            <option value="Night">Night</option>
+          </select>
+        </div>
+      </div>
+
+
+      <div class="modal-footer">
+        <button id="eventTimeConfirmBtn" class="confirm-btn" type="button">Continue</button>
+        <div class="modal-hint">Selected option will be saved automatically.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Event Type Modal -->
+  <div id="eventTypeModalOverlay" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="eventTypeTitle">
+      <div class="modal-glow" aria-hidden="true"></div>
+
+      <div class="modal-header">
+        <div class="modal-icon">
+          <i class="fa-solid fa-calendar-heart" style="color:#ffd700;"></i>
+        </div>
+        <div>
+<h2 id="eventTypeTitle">What event you are planning for?<br /><span class="event-type-date-label" id="eventTypeSelectedDateLabel"></span></h2>
+
+          <p class="modal-subtitle">Aap apna event type select karein.</p>
+        </div>
+        <button id="eventTypeModalCloseX" class="modal-close-x" type="button" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="event-type-options" role="group" aria-label="Event Type Options">
+        <button type="button" class="event-type-btn" data-event-type="Baraat">
+          <span class="event-type-label">Baraat</span>
+        </button>
+        <button type="button" class="event-type-btn" data-event-type="Valima">
+          <span class="event-type-label">Valima</span>
+        </button>
+        <button type="button" class="event-type-btn" data-event-type="Birthday">
+          <span class="event-type-label">Birthday</span>
+        </button>
+        <button type="button" class="event-type-btn" data-event-type="Ameen">
+          <span class="event-type-label">Ameen</span>
+        </button>
+        <button type="button" class="event-type-btn" data-event-type="Mehandi">
+          <span class="event-type-label">Mehandi</span>
+        </button>
+      </div>
+
+      <div class="modal-footer">
+        <div class="modal-hint">Selection saved automatically.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Details Modal -->
+  <div id="userDetailsModalOverlay" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="userDetailsTitle">
+      <div class="modal-glow" aria-hidden="true"></div>
+
+      <div class="modal-header">
+        <div class="modal-icon">
+          <i class="fa-solid fa-user" style="color:#ffd700;"></i>
+        </div>
+        <div>
+          <h2 id="userDetailsTitle">Enter your details</h2>
+          <p class="modal-subtitle">Name aur phone number fill karein.</p>
+        </div>
+        <button id="userDetailsModalCloseX" class="modal-close-x" type="button" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="user-details-body">
+        <div class="user-details-field">
+          <label for="userNameInput" class="user-details-label">Name</label>
+          <input id="userNameInput" class="user-details-input" type="text" placeholder="Your name" autocomplete="name" />
+        </div>
+
+        <div class="user-details-field">
+          <label for="userPhoneInput" class="user-details-label">Phone</label>
+          <input id="userPhoneInput" class="user-details-input" type="tel" placeholder="11 digits" inputmode="numeric" autocomplete="tel" />
+          <div id="userDetailsError" class="user-details-error" role="alert" aria-live="polite" style="display:none;">Phone invalid (11 digits required).</div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="userDetailsOkBtn" class="confirm-btn" type="button">OK</button>
+        <div class="modal-hint">Information locally saved.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmationModalOverlay" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmationTitle">
+      <div class="modal-glow" aria-hidden="true"></div>
+
+      <div class="modal-header">
+        <div class="modal-icon">
+          <i class="fa-solid fa-check" style="color:#ffd700;"></i>
+        </div>
+        <div>
+      <h2 id="confirmationTitle">Confirmation</h2>
+          <p class="modal-subtitle">Your booking details:</p>
+
+        </div>
+        <button id="confirmationModalCloseX" class="modal-close-x" type="button" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="confirmation-body" style="padding: 0 18px 8px;">
+        <div class="confirmation-row" style="margin-bottom:10px;">
+          <div style="font-weight:600;">Name:</div>
+          <div id="confirmationName" style="opacity:.95;">-</div>
+        </div>
+        <div class="confirmation-row" style="margin-bottom:10px;">
+          <div style="font-weight:600;">Phone Number:</div>
+          <div id="confirmationPhone" style="opacity:.95;">-</div>
+        </div>
+        <div class="confirmation-row" style="margin-bottom:10px;">
+          <div style="font-weight:600;">Event Time:</div>
+          <div id="confirmationTime" style="opacity:.95;">-</div>
+        </div>
+        <div class="confirmation-row" style="margin-bottom:10px;">
+          <div style="font-weight:600;">Event Date:</div>
+          <div id="confirmationDate" style="opacity:.95;">-</div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="confirmationOkBtn" class="confirm-btn" type="button">Done</button>
+        <div class="modal-hint">We will contact you soon.</div>
+      </div>
+    </div>
+  </div>
+
+
+  <script>
+    // flag (portfolio ke andar modal open karne ke liye)
+    try { localStorage.setItem('pendingOpenBookingFlow', '1'); } catch (e) {}
+  </script>
+
+  <!-- Hero HD Image Modal -->
+  <div id="heroImageModalOverlay" class="modal-overlay" style="display:none;" aria-hidden="true">
+    <div class="modal-card hero-image-modal-card" role="dialog" aria-modal="true" aria-label="Hero image viewer">
+      <div class="modal-glow" aria-hidden="true"></div>
+
+      <div class="hero-image-modal-toolbar">
+        <button id="heroImageModalPrevBtn" class="hero-image-nav hero-image-nav--prev" type="button" aria-label="Previous image">
+          <i class="fa-solid fa-chevron-left"></i>
+        </button>
+
+        <button id="heroImageModalNextBtn" class="hero-image-nav hero-image-nav--next" type="button" aria-label="Next image">
+          <i class="fa-solid fa-chevron-right"></i>
+        </button>
+
+        <button id="heroImageModalCloseX" class="modal-close-x" type="button" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="hero-image-modal-body">
+        <img id="heroImageModalImg" class="hero-image-modal-img" src="" alt="Banquet image" />
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="portfolio.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+

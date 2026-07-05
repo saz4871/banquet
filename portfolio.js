@@ -123,6 +123,7 @@ export async function initPortfolio() {
     return;
   }
 
+  
   let asset = null;
   try {
     if (portfolioType === 'hall') {

@@ -123,7 +123,6 @@ export async function initPortfolio() {
     return;
   }
 
-  
   let asset = null;
   try {
     if (portfolioType === 'hall') {
@@ -752,12 +751,13 @@ function initEventTimeFlow() {
     });
   }
 
+  // Autoload Event Time modal ko remove kiya.
+  // previously: pendingOpenBookingFlow ke basis par modal auto-open hota tha.
   try {
-    const pending = localStorage.getItem('pendingOpenBookingFlow') === '1';
-    if (pending && !getSavedEventTime()) {
-      openEventTimeModal();
-    }
+    // no-op
+    void localStorage.getItem('pendingOpenBookingFlow');
   } catch (e) {}
+
 
   try {
     const saved = getSavedEventTime();

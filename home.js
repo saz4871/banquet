@@ -232,8 +232,8 @@ window.setHomeMode = function (mode) {
   document.getElementById('navHalls').classList.toggle('active', mode === 'halls');
   document.getElementById('sectionTitle').innerHTML =
     mode === 'banquets'
-      ? 'Available <span>Luxury Spaces</span>'
-      : 'Available <span>Luxury Halls</span>';
+      ? '&nbsp;&nbsp;Available <span>Luxury Spaces</span>'
+      : '&nbsp;&nbsp;Available <span>Luxury Halls</span>&nbsp;';
 
   applySearch();
 

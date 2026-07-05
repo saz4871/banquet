@@ -277,6 +277,71 @@ export async function initPortfolio() {
           setModalImage();
         };
 
+        // Mobile swipe support: swipe left => next, swipe right => prev
+        let touchStartX = null;
+        let touchStartY = null;
+        const onTouchStart = (ev) => {
+          if (!ev || !ev.touches || !ev.touches[0]) return;
+          touchStartX = ev.touches[0].clientX;
+          touchStartY = ev.touches[0].clientY;
+        };
+        const onTouchEnd = (ev) => {
+          if (!touchStartX && touchStartX !== 0) return;
+          if (!ev || !ev.changedTouches || !ev.changedTouches[0]) return;
+
+          const endX = ev.changedTouches[0].clientX;
+          const endY = ev.changedTouches[0].clientY;
+
+          const dx = endX - touchStartX;
+          const dy = endY - touchStartY;
+
+          // Ignore mostly vertical swipes
+          if (Math.abs(dy) > Math.abs(dx)) return;
+
+          const TH = 45; // swipe threshold in px
+          if (dx <= -TH) {
+            onNext();
+          } else if (dx >= TH) {
+            onPrev();
+          }
+
+          touchStartX = null;
+          touchStartY = null;
+        };
+
+        const bindSwipeHandlers = () => {
+          // Bind on a broad area so mobile swipe works even if user swipes on image/toolbar.
+          // (We also avoid duplicate bindings by using an attribute marker.)
+          const targets = [
+            document.getElementById('heroImageModalOverlay'),
+            document.getElementById('heroImageModalImg'),
+            document.querySelector('.hero-image-modal-body'),
+            document.querySelector('.hero-image-modal-card'),
+          ].filter(Boolean);
+
+          const markerKey = 'data-swipe-bound';
+
+          targets.forEach((t) => {
+            if (t.getAttribute && t.getAttribute(markerKey) === '1') return;
+            t.setAttribute(markerKey, '1');
+
+            t.removeEventListener('touchstart', onTouchStart);
+            t.removeEventListener('touchend', onTouchEnd);
+
+            // passive true for start; touchend uses handler to decide direction.
+            t.addEventListener('touchstart', onTouchStart, { passive: true });
+            t.addEventListener('touchend', onTouchEnd);
+
+            // Reduce interference: let vertical scroll work, but horizontal swipe still detectable.
+            if (modalImg && t === modalImg) {
+              modalImg.style.touchAction = 'pan-y';
+            } else if (t.style && (t === targets[0] || t === targets[3])) {
+              t.style.touchAction = 'pan-y';
+            }
+          });
+        };
+
+
 
         // Remove previous handlers by cloning if needed (simple approach: overwrite by setting once)
         if (prevBtn) {

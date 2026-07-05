@@ -14,7 +14,6 @@ body{
   overflow-x:hidden;
 }
 
-
 /* Match browser zoom-like feel without using CSS zoom */
 .page-zoom {
   transform: scale(1.0);
@@ -55,44 +54,49 @@ body{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
 }
 
-.wrap{max-width:1300px;margin:0 auto;padding:22px 18px 70px;position:relative;z-index:1}
 
-.hero{
-  height:42vh;
-  min-height:340px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  text-align:center;
-  position:relative;
-  border-radius:26px;
-  overflow:hidden;
-  border:1px solid rgba(255,255,255,.08);
+
+
+.hero {
+  height: 100vh;
+  min-height: 340px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .08);
+  /* background-size ko cover ki jagah 100% 100% kar diya hai */
   background:
-    linear-gradient(180deg,rgba(255,105,180,.10),rgba(7,9,20,.92)),
-    url('https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1600&q=80') center/cover;
-  box-shadow:0 25px 55px rgba(0,0,0,.40)
+    linear-gradient(180deg, rgba(255, 105, 180, .10), rgba(7, 9, 20, .92)),
+    url('https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1600&q=80') center/100% 100% no-repeat;
+  box-shadow: 0 25px 55px rgba(0, 0, 0, .40)
 }
 
-.hero::after{
-  content:'';
+
+.hero-title-bg{
   position:absolute;
-  inset:-2px;
-  background:conic-gradient(from 180deg, rgba(255,105,180,0), rgba(255,105,180,.35), rgba(255,105,180,0));
-  opacity:.25;
-  filter:blur(14px);
+  top:50%;
+  width:38vw;
+  height:240px;
+  transform:translateY(-50%);
+  background-size:cover;
+  background-position:center;
+  opacity:.95;
+  filter:brightness(0.75) saturate(1.15);
+  z-index:1;
   pointer-events:none;
 }
 
-.hero-content{position:relative;z-index:2;padding:24px}
 .hero-content h1{
-  font-size:3rem;
+  font-size:5rem;
   letter-spacing:.5px;
   color:#ffb3d9;
   font-weight:900;
   text-shadow:0 12px 35px rgba(0,0,0,.50)
 }
-.hero-content p{margin-top:12px;color:#a0aec0;font-size:1.05rem}
+.hero-content p{margin-top:12px;color:#a0aec0;font-size:1.4rem}
 
 .home-navbar{
   position:sticky;
@@ -312,7 +316,7 @@ body{
   100%{ opacity:0; transform: translate(-50%, -50%) translateY(26px) rotate(90deg) scale(.9);} 
 }
 
-@media(max-width:560px){.hero-content h1{font-size:2.2rem}.card{min-height:300px}.img-container{height:175px}}
+@media(max-width:560px){.hero-title-bg{width:58vw;height:180px;opacity:.85}.hero-content h1{font-size:2.2rem}.card{min-height:300px}.img-container{height:175px}}
 
 
 

@@ -657,11 +657,9 @@ function initEventTimeFlow() {
       calendarPane.style.display = 'block';
       calendarPane.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-
-    if (!getSavedEventTime()) {
-      openEventTimeModal();
-    }
+    // Event Time modal ko auto-open na karein.
   });
+
 
   const closeX = document.getElementById('eventTimeModalCloseX');
   if (closeX) {

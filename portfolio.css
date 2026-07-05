@@ -242,13 +242,12 @@ body { background: linear-gradient(180deg, #2a0d2f 0%, #6b2a5c 100%); color: #ff
 
 
 @media (max-width: 720px){
-  .hero-slider-container{ height: 70vh; }
-  .hero-bg-images{ padding: 14px; }
-
-
-  .hero-bg-images .hero-bg-img{ width: 26%; min-width: 90px; }
-  .hero-slider-container{ padding-left: 18px; }
+  /* Mobile pe bhi desktop jaisa layout/fill rahe */
+  .hero-slider-container{ height: 70vh; padding-left: 18px; }
+  .hero-bg-images{ padding: 0; }
+  .hero-bg-images .hero-bg-img{ width: 100%; min-width: 0; }
 }
+
 .content-wrapper { max-width: 1000px; margin: 40px auto; display: flex; flex-direction: column; gap: 30px; padding: 20px; }
 .wide-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,105,180,.18); padding: 40px; border-radius: 20px; }
 .section-title { font-size: 22px; font-weight: 900; margin-bottom: 25px; border-left: 4px solid #ff69b4; padding-left: 15px; display: flex; align-items: center; gap: 10px; }

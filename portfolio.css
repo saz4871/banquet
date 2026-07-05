@@ -173,23 +173,25 @@ body { background: linear-gradient(180deg, #2a0d2f 0%, #6b2a5c 100%); color: #ff
 /* Hero HD Image Modal (NO glassmorphism) */
 .hero-image-modal-card{
   width: min(1280px, 98vw);
-
   background: #0b1224; /* solid background */
   border: 1px solid rgba(255,215,0,.20);
   box-shadow: 0 30px 90px rgba(0,0,0,.65);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-}
 
+  /* Fixed modal layout independent from image aspect */
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+}
 
 .hero-image-modal-toolbar{
   position: relative;
   display:flex;
   align-items:center;
-  justify-content:flex-end;
-  padding: 14px 14px 0;
+  justify-content: space-between;
+  padding: 14px 18px 0;
 }
-
 
 .hero-image-modal-toolbar .hero-image-nav{
   position: static;
@@ -202,24 +204,36 @@ body { background: linear-gradient(180deg, #2a0d2f 0%, #6b2a5c 100%); color: #ff
   justify-content:center;
 }
 
+/* Arrow spacing inside toolbar */
 .hero-image-nav--prev{ margin-right: 10px; }
-.hero-image-nav--next{ margin-right: 10px; }
-
+.hero-image-nav--next{ margin-left: 10px; }
 
 .hero-image-modal-body{
   padding: 10px 18px 18px;
+  flex: 1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height: 0;
 }
 
 .hero-image-modal-img{
   width: 100%;
-  height: auto;
-  max-height: 85vh;
-
+  height: 100%;
+  max-height: none;
   object-fit: contain;
   border-radius: 0; /* original look */
   border: none;
   box-shadow: none;
 }
+
+@media (max-width: 720px){
+  .hero-image-modal-card{
+    max-height: 86vh;
+  }
+  .hero-image-modal-body{ padding: 10px 12px 14px; }
+}
+
 
 
 
@@ -242,11 +256,36 @@ body { background: linear-gradient(180deg, #2a0d2f 0%, #6b2a5c 100%); color: #ff
 
 
 @media (max-width: 720px){
-  /* Mobile pe bhi desktop jaisa layout/fill rahe */
-  .hero-slider-container{ height: 70vh; padding-left: 18px; }
+  /* Mobile: avoid “khula khula” empty space + keep hero stable */
+  .hero-slider-container{
+    height: auto;
+    min-height: 58vh;
+    padding-left: 0;
+    padding-top: 16px;
+    padding-bottom: 18px;
+  }
+
+  .hero-text{
+    padding-left: 0;
+    text-align: center;
+  }
+
   .hero-bg-images{ padding: 0; }
   .hero-bg-images .hero-bg-img{ width: 100%; min-width: 0; }
+
+  /* Reduce CTA size/placement so it doesn't cover content */
+  .hero-image-view-btn--bottom-left{
+    left: auto;
+    right: 12px;
+    bottom: 12px;
+    transform: none;
+    padding: 12px 14px;
+  }
+
+  .hero-image-view-btn span{ font-size: 12px; }
 }
+
+
 
 .content-wrapper { max-width: 1000px; margin: 40px auto; display: flex; flex-direction: column; gap: 30px; padding: 20px; }
 .wide-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,105,180,.18); padding: 40px; border-radius: 20px; }
@@ -265,6 +304,12 @@ body { background: linear-gradient(180deg, #2a0d2f 0%, #6b2a5c 100%); color: #ff
 .price-block span { font-size:12px; color:#94a3b8; text-transform:uppercase; font-weight:700; }
 .price-block h2 { color:#ff69b4; font-size:24px; margin-top:5px; }
 .video-wrapper iframe { width: 100%; aspect-ratio: 16/9; border-radius: 15px; }
+
+/* Mobile: cinematic video thoda bada / clearer */
+@media (max-width: 720px){
+  .video-wrapper iframe{ aspect-ratio: 16/10; min-height: 200px; }
+}
+
 
 /* Floating BOOK NOW button (bottom-left, fixed) */
 #bookNowBtn{
@@ -681,6 +726,29 @@ body { background: linear-gradient(180deg, #2a0d2f 0%, #6b2a5c 100%); color: #ff
   position: relative;
   overflow: hidden;
 }
+
+/* Mobile: floating BOOK NOW button se calendar cover na ho */
+@media (max-width: 720px){
+  .calendar-pane{
+    margin-bottom: 170px;
+    padding: 18px;
+  }
+
+  /* Calendar mobile fit: cut/overflow kam + dates ko proper fit */
+  .calendar-pane__body{ overflow-x: visible; }
+  .calendar-grid{ width: 100%; }
+  .calendar-weekdays{ grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 8px 4px; }
+  .calendar-days{ grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 6px 4px; }
+
+  .cal-day{ width: 100%; aspect-ratio: 1.6 / 1; border-radius: 12px; font-size: 12px; }
+
+
+  .content-wrapper{ padding: 14px; gap: 18px; }
+  .wide-box{ padding: 22px; }
+  .price-display-wrapper{ flex-direction: column; gap: 18px; }
+}
+
+
 
 .calendar-pane:before{
   content:"";

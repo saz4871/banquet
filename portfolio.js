@@ -573,6 +573,16 @@ async function renderCalendarFor(calendarType) {
   const year = now.getFullYear();
   const month = now.getMonth();
 
+  // IMPORTANT: Use local-time date keys to avoid iOS/Android timezone shifts.
+  // toISOString() converts to UTC and can move the day backward/forward.
+  const toLocalISODate = (d) => {
+    const yy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yy}-${mm}-${dd}`;
+  };
+
+
 
   const firstDay = new Date(year, month, 1);
   const firstWeekday = firstDay.getDay();
@@ -581,6 +591,8 @@ async function renderCalendarFor(calendarType) {
   const totalCells = 42;
   const todayISO = new Date();
   todayISO.setHours(0, 0, 0, 0);
+  const todayKey = toLocalISODate(todayISO);
+
 
   daysContainer.innerHTML = '';
 
@@ -595,11 +607,13 @@ async function renderCalendarFor(calendarType) {
     const dayDate = new Date(year, month, Math.max(1, Math.min(daysInMonth, dayNumber || 1)));
     dayDate.setHours(0, 0, 0, 0);
 
-    const isoStr = dayDate.toISOString().slice(0, 10);
+    const isoStr = toLocalISODate(dayDate);
+
     dayBtn.textContent = isOut ? '' : String(dayNumber);
 
     if (!isOut) {
-      if (isoStr === todayISO.toISOString().slice(0, 10)) dayBtn.classList.add('is-today');
+      if (isoStr === todayKey) dayBtn.classList.add('is-today');
+
 
       // bookedSet: targetdate is saved in DB as stored (YYYY-MM-DD expected)
       if (bookedSet && bookedSet.has(isoStr)) {

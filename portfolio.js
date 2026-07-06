@@ -612,7 +612,10 @@ async function renderCalendarFor(calendarType) {
     dayBtn.textContent = isOut ? '' : String(dayNumber);
 
     if (!isOut) {
+      // Avoid timezone drift: compare using local YYYY-MM-DD keys only.
+      // todayKey already computed in local time.
       if (isoStr === todayKey) dayBtn.classList.add('is-today');
+
 
 
       // bookedSet: targetdate is saved in DB as stored (YYYY-MM-DD expected)
@@ -1176,10 +1179,7 @@ document.addEventListener('keydown', function (e) {
   }
 }, false);
 
-// Right click disable
-document.addEventListener('contextmenu', function (e) {
-  e.preventDefault();
-}, false);
+
 
 
 initPortfolio();

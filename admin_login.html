@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin RoseGold Login</title>
+
+    <link rel="stylesheet" href="./admin_login.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="card" aria-live="polite">
+        <h1 class="title">Admin Login</h1>
+
+        <form id="verifyForm" class="form" autocomplete="off">
+          <label class="label" for="twoStepKey">Enter 2-Step Authentication Key:</label>
+          <input
+            id="twoStepKey"
+            name="twoStepKey"
+            class="input"
+            type="password"
+            inputmode="numeric"
+            placeholder="Enter key"
+            required
+          />
+
+          <button id="verifyBtn" class="btn" type="submit">
+            Verify
+          </button>
+
+          <p id="message" class="message" role="status"></p>
+        </form>
+
+      </section>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script type="module" src="./admin_login.js"></script>
+
+  </body>
+</html>
+

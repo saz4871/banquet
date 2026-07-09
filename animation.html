@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent; /* Transparent background */
+    }
+
+    /* Decorative rose petals layer */
+    .petals {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 0;
+    }
+
+    .petal {
+      position: absolute;
+      top: -10vh;
+      width: 14px;
+      height: 10px;
+      border-radius: 100% 0 100% 0;
+      transform: rotate(45deg);
+      filter: drop-shadow(0 8px 12px rgba(217, 70, 239, 0.18));
+      opacity: 0.95;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Petals Container -->
+  <div class="petals"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script>
+    function startPetals() {
+      const host = document.querySelector(".petals");
+      if (!host) return;
+
+      const colors = ["#fb7185", "#f973a9", "#d946ef"];
+      const count = 25; // Petals ki tadat badha di taaki poore page par dikhein
+
+      for (let i = 0; i < count; i++) {
+        const p = document.createElement("div");
+        p.className = "petal";
+        
+        // Random position and settings
+        const left = Math.random() * 100;
+        const size = 12 + Math.random() * 12;
+        const duration = 6 + Math.random() * 6;
+        const delay = Math.random() * 5;
+        const hue = colors[Math.floor(Math.random() * colors.length)];
+
+        p.style.left = left + "%";
+        p.style.width = size + "px";
+        p.style.height = (size * 0.7) + "px";
+        p.style.background = `radial-gradient(circle at 30% 30%, rgba(255, 225, 235, 0.95), ${hue})`;
+        host.appendChild(p);
+
+        // GSAP Animation
+        const sway = Math.random() * 200 - 100;
+        gsap.fromTo(
+          p,
+          { y: -50, opacity: 0, x: 0, rotate: 20 },
+          {
+            y: window.innerHeight + 50,
+            x: sway,
+            rotate: 280,
+            opacity: 1,
+            duration: duration,
+            delay: delay,
+            ease: "none",
+            repeat: -1,
+            repeatDelay: 0.2
+          }
+        );
+      }
+    }
+
+// Right-click disable karne ke liye
+document.addEventListener('contextmenu', function(e) {
+  e.preventDefault();
+}, false);
+
+// F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U (View Source) disable karne ke liye
+document.addEventListener('keydown', function(e) {
+  // F12 key
+  if (e.keyCode === 123) {
+    e.preventDefault();
+  }
+  // Ctrl+Shift+I (Inspect), Ctrl+Shift+J (Console), Ctrl+U (View Source)
+  if (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74)) {
+    e.preventDefault();
+  }
+  if (e.ctrlKey && e.keyCode === 85) {
+    e.preventDefault();
+  }
+}, false);
+    startPetals();
+  </script>
+</body>
+</html>

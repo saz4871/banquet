@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Home | Premium Luxury Banquets & Halls</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <link rel="stylesheet" href="home.css">
+</head>
+<body>
+  <div class="bg-spotlight" aria-hidden="true"></div>
+  <div class="bg-noise" aria-hidden="true"></div>
+
+  <iframe
+    src="animation.html"
+    title="Rose petals animation"
+    style="position:fixed;inset:0;width:100%;height:100%;border:0;z-index:0;pointer-events:none;"
+    aria-hidden="true"
+  ></iframe>
+
+  <div class="wrap page-zoom">
+
+    <div class="hero" aria-hidden="true">
+      <div class="hero-title-bg hero-title-bg--left" aria-hidden="true"></div>
+      <div class="hero-title-bg hero-title-bg--right" aria-hidden="true"></div>
+
+      <div class="hero-content">
+<h1 id="heroTitle"><span>The Grand Event Vault</span></h1>
+        <p id="heroSubtitle">Curated Luxury & Elite Experiences Beyond Imagination</p>
+      </div>
+    </div>
+
+    <nav class="home-navbar">
+      <ul class="home-nav-links">
+        <li><a href="#" id="navBanquets" class="active" onclick="setHomeMode('banquets');return false;">Banquets</a></li>
+        <li><a href="#" id="navHalls" onclick="setHomeMode('halls');return false;">Halls</a></li>
+      </ul>
+    </nav>
+
+    <div class="search-row">
+      <div class="search-container">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input id="searchInput" type="text" placeholder="Search banquets/halls by name, tagline, contact..." />
+      </div>
+    </div>
+
+    <div class="section-header">
+      <h2 id="sectionTitle">&nbsp;&nbsp;Available <span>Luxury Spaces</span></h2>
+      <div class="count-pill">Available: <b id="countBadge">0</b></div>
+    </div>
+
+    <div id="grid" class="grid"></div>
+    <div id="emptyState" class="empty" style="display:none">No items available right now.</div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" class="loading-overlay" aria-live="polite">
+    <div class="loading-card">
+      <div class="loading-scene" aria-hidden="true">
+        <div class="leaf-leaf" style="--i:0"></div>
+        <div class="leaf-leaf" style="--i:1"></div>
+        <div class="leaf-leaf" style="--i:2"></div>
+        <div class="leaf-leaf" style="--i:3"></div>
+      </div>
+
+      <div class="loading-text">We’re curating the best venues for you…</div>
+
+    </div>
+  </div>
+
+
+  <script src="home.js" type="module"></script>
+
+</body>
+</html>
+
+

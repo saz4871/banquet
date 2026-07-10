@@ -1771,19 +1771,30 @@ verifyForm.addEventListener("submit", async (e) => {
           if (!snap.exists()) return;
           const data = snap.val() || {};
           const updates = [];
-          const today = new Date("2026-07-08"); // Current System Date
+          // Pakistan realtime (Asia/Karachi) date for correct day-difference
+          // Firebase/Browser timezone difference ki wajah se off-by-one aa raha ho to yeh fix karega.
+          const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }); // YYYY-MM-DD
+          const today = new Date(`${todayStr}T00:00:00`);
+
+
 
           for (const [docId, rec] of Object.entries(data)) {
             const recordUid = String(rec.UID ?? rec.uid ?? rec.hall_UID ?? rec.hallId ?? rec.id ?? rec.vendorId ?? "");
-            if (recordUid === vendorIdStr && rec.expiredate) {
-              const expireDate = new Date(rec.expiredate);
-              // Calculation: (Expiry - Today)
-              const diffTime = expireDate - today;
-              const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-              
-              // Direct value update (Negative means expired)
-              updates.push(set(ref(db, `${baseRef}/${docId}/countdowndays`), String(diffDays)));
+            // Primary: remaining days = expireDate - today(Pakistan)
+            if (recordUid === vendorIdStr && (rec.expiredate || rec.expireDate)) {
+              const expireRaw = rec.expiredate ?? rec.expireDate;
+              const expireStr = String(expireRaw);
+              const expireISO = expireStr.length >= 10 ? expireStr.slice(0, 10) : expireStr;
+              const expireDate = new Date(`${expireISO}T00:00:00`);
+
+              if (!Number.isNaN(expireDate.getTime())) {
+                const diffTime = expireDate - today;
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                updates.push(set(ref(db, `${baseRef}/${docId}/countdowndays`), String(diffDays)));
+              }
             }
+
+
           }
           await Promise.all(updates);
         };

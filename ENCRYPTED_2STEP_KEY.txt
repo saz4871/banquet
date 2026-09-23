@@ -1,7 +1,0 @@
-Event Vault — encrypted admin 2-step key
-
-Firebase Realtime Database path:
- /banquet/twostepauthkey
-
-Encrypted value:
-EV1.8MIq2mfakUjjo-l1qYdYVg.zjhadMRCt4m5vLrN.BgQXLhw1L2vG0LDnTG8Is6aRbsLUITOAgw

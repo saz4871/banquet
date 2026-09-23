@@ -1351,3 +1351,78 @@ img { content-visibility: auto; }
 @media (prefers-reduced-motion: reduce) {
   .wide-box, .calendar-pane { animation: none; }
 }
+
+/* =========================================================
+   MOBILE PREMIUM LAYOUT FIX
+   - Portfolio content boxes: one full-width box per row
+   - Keep comfortable spacing and readable typography on phones
+   ========================================================= */
+@media (max-width: 720px) {
+  .content-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100%;
+    max-width: 100%;
+    margin: 24px auto !important;
+    padding: 12px !important;
+    gap: 16px !important;
+  }
+
+  .content-wrapper > .wide-box {
+    width: 100% !important;
+    min-width: 0 !important;
+    grid-column: auto !important;
+    padding: 20px !important;
+    border-radius: 18px;
+  }
+
+  .section-title {
+    font-size: 15px !important;
+  }
+
+  .desc-text {
+    font-size: 13px;
+    line-height: 1.65;
+  }
+
+  .price-display-wrapper {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: 14px !important;
+  }
+
+  .price-block {
+    width: 100%;
+    min-height: 76px;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero-slider-container {
+    height: 52vh;
+    min-height: 350px;
+    max-height: 500px;
+  }
+
+  .hero-text {
+    padding-inline: 18px;
+  }
+
+  #heroTitle {
+    font-size: clamp(28px, 8vw, 40px);
+  }
+
+  #heroLocationText {
+    font-size: 13px !important;
+  }
+
+  .content-wrapper {
+    padding: 10px !important;
+    gap: 14px !important;
+  }
+
+  .content-wrapper > .wide-box {
+    padding: 18px !important;
+  }
+}

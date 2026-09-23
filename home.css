@@ -573,3 +573,132 @@ body::before{
     height: 30px !important;
   }
 }
+
+/* =========================================================
+   MOBILE PREMIUM HOME FIX
+   - Venue cards are one per row (no cramped 2-column layout)
+   - Hero is reduced so useful content appears above the fold
+   - Better phone spacing and readable card proportions
+   ========================================================= */
+@media (max-width: 700px) {
+  .hero {
+    height: 52vh !important;
+    min-height: 360px !important;
+    max-height: 500px;
+    background-size: cover !important;
+    background-position: center !important;
+  }
+
+  .hero-content {
+    width: min(92vw, 520px);
+    padding: 0 18px;
+  }
+
+  .hero-content h1 {
+    font-size: clamp(2rem, 8vw, 2.8rem) !important;
+    line-height: 1.08;
+  }
+
+  .hero-content p {
+    font-size: .95rem !important;
+    line-height: 1.5;
+    padding-inline: 8px;
+  }
+
+  .home-navbar {
+    margin-top: 12px !important;
+    border-radius: 16px;
+  }
+
+  .home-nav-links {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .home-nav-links a {
+    font-size: 13px;
+    padding: 9px 15px;
+  }
+
+  .search-row {
+    margin: 14px 0 20px !important;
+    padding-inline: 10px;
+  }
+
+  .search-container {
+    padding: 11px 14px;
+  }
+
+  .section-header {
+    margin: 14px 10px !important;
+    align-items: center;
+  }
+
+  .section-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .count-pill {
+    padding: 8px 10px;
+    font-size: 11px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+    padding: 0 10px !important;
+  }
+
+  .card {
+    width: 100%;
+    min-height: 0 !important;
+    border-radius: 20px;
+  }
+
+  .img-container {
+    height: 190px !important;
+  }
+
+  .card-body {
+    padding: 15px 16px 13px !important;
+  }
+
+  .card-title {
+    font-size: 1rem !important;
+    min-height: 0 !important;
+  }
+
+  .card-tag {
+    font-size: .82rem !important;
+    min-height: 0 !important;
+    margin-top: 7px !important;
+  }
+
+  .card-footer {
+    padding: 11px 16px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .hero {
+    height: 48vh !important;
+    min-height: 330px !important;
+  }
+
+  .hero-title-bg {
+    width: 78vw;
+    height: 150px;
+  }
+
+  .hero-content h1 {
+    font-size: clamp(1.85rem, 8.5vw, 2.35rem) !important;
+  }
+
+  .hero-content p {
+    font-size: .88rem !important;
+  }
+
+  .img-container {
+    height: 180px !important;
+  }
+}

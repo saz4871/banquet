@@ -183,8 +183,12 @@ function applySearch() {
 
 window.setHomeMode = function (mode) {
   homeMode = mode;
-  document.getElementById('navBanquets').classList.toggle('active', mode === 'banquets');
-  document.getElementById('navHalls').classList.toggle('active', mode === 'halls');
+  const banquetTab = document.getElementById('navBanquets');
+  const hallTab = document.getElementById('navHalls');
+  banquetTab.classList.toggle('active', mode === 'banquets');
+  hallTab.classList.toggle('active', mode === 'halls');
+  banquetTab.setAttribute('aria-selected', String(mode === 'banquets'));
+  hallTab.setAttribute('aria-selected', String(mode === 'halls'));
   document.getElementById('sectionTitle').innerHTML =
     mode === 'banquets'
       ? '&nbsp;&nbsp;Available <span>Luxury Spaces</span>'

@@ -768,8 +768,9 @@ async function renderCalendarFor(calendarType) {
         const dmMatch = tdRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
         if (dmMatch) tdIso = `${dmMatch[3]}-${dmMatch[2]}-${dmMatch[1]}`;
         
-        if (String(it.status).toLowerCase() === 'pending') bookedSet.add(tdIso);
-        else if (String(it.status).toLowerCase() === 'approved') approvedSet.add(tdIso);
+        const statusLower = String(it.status).trim().toLowerCase();
+        if (statusLower === 'pending' || statusLower === 'awaiting' || statusLower.includes('pending')) bookedSet.add(tdIso);
+        else if (statusLower === 'approved' || statusLower.includes('approved')) approvedSet.add(tdIso);
       }
 
       // 2. Naya: Vendor Red Marks Fetch
@@ -831,14 +832,19 @@ for (let cell = 0; cell < 42; cell++) {
         dayBtn.textContent = String(dayNumber);
         if (isoStr === todayKey) dayBtn.classList.add('is-today');
 
-        // Priority Logic (Ab koi conflict nahi hoga)
-        if (redMarkedSet.has(isoStr)) {
+        // Portfolio rule: an approved booking is RED (not green).
+        // Green is reserved for the vendor dashboard only.
+        if (approvedSet.has(isoStr)) {
             dayBtn.classList.add('is-redmarked');
-            // Red marked ko click se bachane ke liye click logic mein check hai
-        } else if (approvedSet.has(isoStr)) {
-            dayBtn.classList.add('is-approved');
+            dayBtn.setAttribute('title', 'Date Fully Reserved');
+            dayBtn.setAttribute('aria-disabled', 'true');
+        } else if (redMarkedSet.has(isoStr)) {
+            dayBtn.classList.add('is-redmarked');
+            dayBtn.setAttribute('title', 'Date Fully Reserved');
+            dayBtn.setAttribute('aria-disabled', 'true');
         } else if (bookedSet.has(isoStr)) {
             dayBtn.classList.add('is-booked-by-other');
+            dayBtn.setAttribute('title', 'Booking Pending by Other User');
             dayBtn.setAttribute('aria-disabled', 'true');
         }
     }
@@ -848,25 +854,14 @@ for (let cell = 0; cell < 42; cell++) {
 
         const isoStr = toLocalISODate(new Date(year, month, dayNumber));
 
-        // Red marked => Approved jaisa behavior + toast
+        // Reserved / unavailable states.
         if (dayBtn.classList.contains('is-redmarked')) {
-            showVenueStatusToast({
-              type: 'approved',
-              title: 'Date Fully Reserved',
-              message: 'This date is fully reserved for this time.'
-            });
-            return;
-        }
-
-        // Approved => toast
-        if (dayBtn.classList.contains('is-approved')) {
             showVenueStatusToast({ type: 'approved', title: 'Date Fully Reserved', message: 'This date is fully reserved for this time.' });
             return;
         }
 
-        // Booked by other => treat as disabled (should already be not clickable, but keep safe)
         if (dayBtn.classList.contains('is-booked-by-other')) {
-            showVenueStatusToast({ type: 'pending', title: 'Not Available', message: 'This date is already booked by another client.' });
+            showVenueStatusToast({ type: 'pending', title: 'Booking Pending', message: 'Booking pending by another user for this date.' });
             return;
         }
 
@@ -1481,6 +1476,12 @@ function initConfirmationFlow() {
         // (Firebase RTDB path: /user/unique_user/{user_UID})
         const userRef = ref(database, `user/unique_user/${user_UID}`);
         await set(userRef, await encryptDeep(payload));
+
+        // Repaint immediately: the newly submitted request appears yellow/pending
+        // on the same calendar without waiting for the background refresh timer.
+        try {
+          await renderCalendarFor(event_time || 'Morning');
+        } catch (e) {}
 
         // Clear pending booking state if any
         try {

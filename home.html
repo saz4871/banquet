@@ -3,73 +3,95 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Home | Premium Luxury Banquets & Halls</title>
+  <meta name="theme-color" content="#090b0f" />
+  <title>Event Vault | Curated Event Spaces</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" />
-  <link rel="stylesheet" href="home.css">
+  <link rel="stylesheet" href="home.css" />
 </head>
 <body>
-  <div class="bg-spotlight" aria-hidden="true"></div>
-  <div class="bg-noise" aria-hidden="true"></div>
+  <div class="site-glow site-glow--one" aria-hidden="true"></div>
+  <div class="site-glow site-glow--two" aria-hidden="true"></div>
+  <div class="site-grid" aria-hidden="true"></div>
 
-  <div class="wrap page-zoom">
+  <main class="home-shell">
+    <section class="hero-card">
+      <div class="hero-orbit hero-orbit--one" aria-hidden="true"></div>
+      <div class="hero-orbit hero-orbit--two" aria-hidden="true"></div>
+      <div class="hero-lines" aria-hidden="true"></div>
 
-    <div class="hero" aria-hidden="true">
-      <div class="hero-title-bg hero-title-bg--left" aria-hidden="true"></div>
-      <div class="hero-title-bg hero-title-bg--right" aria-hidden="true"></div>
-
-      <div class="hero-content">
-<h1 id="heroTitle"><span>The Grand Event Vault</span></h1>
-        <p id="heroSubtitle">Curated Luxury & Elite Experiences Beyond Imagination</p>
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="eyebrow-dot"></span> PRIVATE EVENT COLLECTION</div>
+        <h1 id="heroTitle"><span>The Grand Event Vault</span></h1>
+        <p id="heroSubtitle">A refined collection of distinctive spaces for celebrations, ceremonies and unforgettable nights.</p>
+        <div class="hero-actions">
+          <button class="hero-chip" type="button" onclick="document.getElementById('searchInput').focus()">
+            <i class="fa-solid fa-sparkles"></i> Explore the collection
+          </button>
+          <span class="hero-note"><i class="fa-solid fa-shield-halved"></i> Curated & verified spaces</span>
+        </div>
       </div>
-    </div>
 
-    <nav class="home-navbar">
-      <ul class="home-nav-links">
-        <li><a href="#" id="navBanquets" class="active" onclick="setHomeMode('banquets');return false;">Banquets</a></li>
-        <li><a href="#" id="navHalls" onclick="setHomeMode('halls');return false;">Halls</a></li>
-      </ul>
-    </nav>
-
-    <div class="search-row">
-      <div class="search-container">
-        <i class="fa-solid fa-magnifying-glass"></i>
-        <input id="searchInput" type="text" placeholder="Search banquets/halls by name, tagline, contact..." />
+      <div class="hero-side" aria-hidden="true">
+        <div class="hero-side__label">EVENT VAULT</div>
+        <div class="hero-side__number">01</div>
+        <div class="hero-side__line"></div>
+        <div class="hero-side__caption">SPACE<br>CURATION</div>
       </div>
-    </div>
+    </section>
 
-    <div class="section-header">
-      <h2 id="sectionTitle">&nbsp;&nbsp;Available <span>Luxury Spaces</span></h2>
-      <div class="count-pill">Available: <b id="countBadge">0</b></div>
-    </div>
+    <section class="collection-bar">
+      <div class="collection-tabs" role="tablist" aria-label="Venue type">
+        <button id="navBanquets" class="collection-tab active" type="button" role="tab" aria-selected="true" onclick="setHomeMode('banquets');return false;">
+          <span class="tab-icon"><i class="fa-solid fa-champagne-glasses"></i></span>
+          <span><b>Banquets</b><small>Celebration spaces</small></span>
+        </button>
+        <button id="navHalls" class="collection-tab" type="button" role="tab" aria-selected="false" onclick="setHomeMode('halls');return false;">
+          <span class="tab-icon"><i class="fa-solid fa-building-columns"></i></span>
+          <span><b>Halls</b><small>Elegant interiors</small></span>
+        </button>
+      </div>
+      <div class="collection-meta"><span>LIVE COLLECTION</span><i class="fa-solid fa-circle"></i></div>
+    </section>
 
-    <div id="grid" class="grid"></div>
-    <div id="emptyState" class="empty" style="display:none">No items available right now.</div>
-  </div>
+    <section class="discovery-row">
+      <div class="section-intro">
+        <span class="section-kicker">DISCOVER YOUR SPACE</span>
+        <h2 id="sectionTitle">Available <span>Luxury Spaces</span></h2>
+        <p>Browse hand-picked venues and open a space to view its full portfolio and availability.</p>
+      </div>
+      <div class="search-stack">
+        <label class="search-box" for="searchInput">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input id="searchInput" type="search" autocomplete="off" placeholder="Search by venue, location or detail..." />
+          <span class="search-key">⌕</span>
+        </label>
+        <div class="result-count"><span id="countBadge">0</span> spaces currently available</div>
+      </div>
+    </section>
 
-  <div id="toast" class="toast"></div>
+    <section class="results-section" aria-label="Available venues">
+      <div id="grid" class="grid"></div>
+      <div id="emptyState" class="empty" style="display:none">
+        <div class="empty-icon"><i class="fa-regular fa-compass"></i></div>
+        <strong>No spaces found</strong>
+        <span>Try a different venue name, location or keyword.</span>
+      </div>
+    </section>
+  </main>
 
-  <!-- Loading overlay -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
   <div id="loadingOverlay" class="loading-overlay" aria-live="polite">
     <div class="loading-card">
-      <div class="loading-scene" aria-hidden="true">
-        <div class="leaf-leaf" style="--i:0"></div>
-        <div class="leaf-leaf" style="--i:1"></div>
-        <div class="leaf-leaf" style="--i:2"></div>
-        <div class="leaf-leaf" style="--i:3"></div>
-      </div>
-
-      <div class="loading-text"><span>We’re curating the best venues for you</span><span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span></div>
-
+      <div class="loader-ring"><span></span></div>
+      <div class="loading-overline">EVENT VAULT</div>
+      <div class="loading-text">Curating your collection<span class="loading-dots"><i></i><i></i><i></i></span></div>
     </div>
   </div>
 
-
   <script src="home.js" type="module"></script>
-
 </body>
 </html>
-
-

@@ -106,12 +106,6 @@ function renderView(viewKey) {
           window.__vendorPendingUnsub = null;
         }
 
-        // Quick debug helper (will not break UI)
-        // If pending count is not updating, check these values in console.
-        try {
-          console.log("[vendor_panel] assignedVenueUid=", vendorAssignedVenueUid);
-        } catch (e) {}
-
 
             const normalizeStatus = (s) => String(s ?? "").toLowerCase().trim();
 
@@ -187,8 +181,6 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
     const data = snap.exists() ? (await decryptDeep(snap.val() || {})) : {};
     let count = 0;
     let approvedCount = 0; // Naya variable approved count ke liye
-
-    console.log("[DEBUG] Current vendorAssignedVenueUid:", vendorAssignedVenueUid);
 
     for (const [key, r] of Object.entries(data)) {
       if (!r) continue;
@@ -530,27 +522,38 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         // never sees time options that Admin disabled.
         let vendorAvailability = { Morning: true, Evening: true, Night: true };
         try {
-          const venueUid = vendorAssignedVenueUid;
-          const [banquetSnap, hallSnap] = await Promise.all([
-            get(ref(db, `/banquet/unique_bank/${venueUid}`)),
-            get(ref(db, `/hall/unique_hall/${venueUid}`))
-          ]);
+          const venueUid = String(vendorAssignedVenueUid ?? '').trim();
+          const preferredSource = String(window.__vendor_source || localStorage.getItem('vendorSource') || '').toLowerCase();
+          const paths = preferredSource === 'hall'
+            ? [`/hall/unique_hall/${venueUid}`, `/banquet/unique_bank/${venueUid}`]
+            : preferredSource === 'banquet'
+              ? [`/banquet/unique_bank/${venueUid}`, `/hall/unique_hall/${venueUid}`]
+              : [`/banquet/unique_bank/${venueUid}`, `/hall/unique_hall/${venueUid}`];
+
           let venue = null;
-          if (banquetSnap.exists()) venue = await decryptDeep(banquetSnap.val());
-          else if (hallSnap.exists()) venue = await decryptDeep(hallSnap.val());
+          for (const path of paths) {
+            const snap = await get(ref(db, path));
+            if (snap.exists()) {
+              venue = await decryptDeep(snap.val());
+              break;
+            }
+          }
+
           if (venue) {
             const a = venue.avaibility ?? venue.availability ?? {};
-            const hasConfigured = ['Morning','Evening','Night'].some(k => Object.prototype.hasOwnProperty.call(a, k) || Object.prototype.hasOwnProperty.call(a, k.toLowerCase()));
+            const getAvailabilityValue = (key) => a[key] ?? a[key.toLowerCase()] ?? a[key.toUpperCase()];
+            const hasConfigured = ['Morning','Evening','Night'].some((k) => Object.prototype.hasOwnProperty.call(a, k) || Object.prototype.hasOwnProperty.call(a, k.toLowerCase()) || Object.prototype.hasOwnProperty.call(a, k.toUpperCase()));
             if (hasConfigured) {
               vendorAvailability = {
-                Morning: checkboxValue(a.Morning ?? a.morning),
-                Evening: checkboxValue(a.Evening ?? a.evening),
-                Night: checkboxValue(a.Night ?? a.night)
+                Morning: checkboxValue(getAvailabilityValue('Morning')),
+                Evening: checkboxValue(getAvailabilityValue('Evening')),
+                Night: checkboxValue(getAvailabilityValue('Night'))
               };
             }
           }
         } catch (e) {
-          console.warn('[vendor_panel] availability fetch failed; using legacy all-times fallback', e);
+          // Keep a safe legacy fallback if the venue record is temporarily unavailable.
+          vendorAvailability = { Morning: true, Evening: true, Night: true };
         }
         const enabledVendorTimes = ['Morning','Evening','Night'].filter(t => vendorAvailability[t]);
         if (!enabledVendorTimes.length) enabledVendorTimes.push('Morning');
@@ -641,6 +644,11 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
                   <div class="calendar-days"></div>
                 </div>
               </div>
+              <div class="calendar-status-legend" aria-label="Calendar status legend">
+                <span><i class="dot-green"></i> Approved booking</span>
+                <span><i class="dot-yellow"></i> Booking pending</span>
+                <span><i class="dot-red"></i> Vendor blocked</span>
+              </div>
             </div>
           </div>
         `;
@@ -677,6 +685,24 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
           const mm = String(d.getMonth() + 1).padStart(2, '0');
           const dd = String(d.getDate()).padStart(2, '0');
           return `${yy}-${mm}-${dd}`;
+        };
+
+        const showVendorCalendarNotice = (title, message, type = 'info') => {
+          let host = document.getElementById('vendorCalendarNoticeHost');
+          if (!host) {
+            host = document.createElement('div');
+            host.id = 'vendorCalendarNoticeHost';
+            host.className = 'vendor-calendar-notice-host';
+            host.setAttribute('aria-live', 'polite');
+            document.body.appendChild(host);
+          }
+          host.innerHTML = `
+            <div class="vendor-calendar-notice vendor-calendar-notice--${type}">
+              <div class="vendor-calendar-notice__icon"><i class="fa-solid ${type === 'approved' ? 'fa-lock' : type === 'pending' ? 'fa-clock' : type === 'error' ? 'fa-triangle-exclamation' : 'fa-circle-check'}"></i></div>
+              <div><strong>${title}</strong><span>${message}</span></div>
+            </div>`;
+          window.clearTimeout(host.__hideTimer);
+          host.__hideTimer = window.setTimeout(() => { host.innerHTML = ''; }, 2800);
         };
 
         const renderCalendarFor = async (calendarType) => {
@@ -771,8 +797,8 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
               if (!tdIso) continue;
 
-              if (statusLower === 'pending') bookedSet.add(tdIso);
-              else if (statusLower === 'approved') approvedSet.add(tdIso);
+              if (statusLower === 'pending' || statusLower === 'awaiting' || statusLower.includes('pending')) bookedSet.add(tdIso);
+              else if (statusLower === 'approved' || statusLower.includes('approved')) approvedSet.add(tdIso);
             }
           } catch (e) {
             console.warn('[vendor_panel calendar] fetch fail', e);
@@ -832,70 +858,82 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
     // 1. TODAY MARKER
     if (isoStr === todayKey) dayBtn.classList.add('is-today');
 
-    // 2. STATUS & RED-MARK LOGIC (YEH HEE FIX HAI)
-    // Pehle check karein agar ye date "Red Marked" hai
-    if (redMarkedIsoSet.has(isoStr)) {
-        dayBtn.classList.add('is-redmarked');
-    }
-
-    // Phir booking/approved check
+    // 2. STATUS PRIORITY
+    // Approved booking = GREEN and locked. Manual vendor block = RED and locked.
+    // Pending request = YELLOW and locked.
     if (approvedSet.has(isoStr)) {
       dayBtn.classList.add('is-approved');
-      dayBtn.classList.remove('is-booked-by-other');
-      dayBtn.removeAttribute('aria-disabled');
+      dayBtn.setAttribute('title', 'Approved booking — fully reserved');
+      dayBtn.setAttribute('aria-disabled', 'true');
+    } else if (redMarkedIsoSet.has(isoStr)) {
+      dayBtn.classList.add('is-redmarked');
+      dayBtn.setAttribute('title', 'Vendor blocked — fully reserved');
+      dayBtn.setAttribute('aria-disabled', 'true');
     } else if (bookedSet.has(isoStr)) {
       dayBtn.classList.add('is-booked-by-other');
+      dayBtn.setAttribute('title', 'Booking pending by another user');
       dayBtn.setAttribute('aria-disabled', 'true');
     }
 
-    // 3. CLICK EVENT
+    // 3. Vendor RED-MARK toggle. This is a vendor-only calendar action;
+    // it must NOT open the customer booking modal.
     dayBtn.addEventListener('click', async () => {
-      // Agar date approved hai, toh ruk jayein
       if (dayBtn.classList.contains('is-approved')) {
-        alert('Date fully reserved for this time.');
+        showVendorCalendarNotice('Date fully reserved', 'This approved booking is locked for the vendor.', 'approved');
         return;
       }
 
-      // Agar booked/pending hai, toh red mark na lagayein
-      if (dayBtn.classList.contains('is-booked-by-other')) return;
+      if (dayBtn.classList.contains('is-booked-by-other')) {
+        showVendorCalendarNotice('Booking pending', 'A customer request is already pending for this date.', 'pending');
+        return;
+      }
 
-      // RED MARK TOGGLE LOGIC
       const isAlreadyRed = redMarkedIsoSet.has(isoStr);
+      const basePath = `/redmarkdates/unique_redmark/${vendorAssignedVenueUid}`;
+      const [yyyy, mm, dd] = isoStr.split('-');
+      const reddateVal = `${dd}/${mm}/${yyyy}|${calendarType}`;
+      const childKey = `${calendarType}_${isoStr}`;
+      const nodePath = `${basePath}/${childKey}`;
+
+      // Premium inline loading state: the spinner lives inside the exact day
+      // and disappears as soon as Firebase finishes the write/remove.
+      window.__vendorCalendarUpdating = true;
+      dayBtn.classList.add('is-calendar-updating');
+      dayBtn.setAttribute('aria-busy', 'true');
+      dayBtn.setAttribute('aria-disabled', 'true');
+      const originalDayText = dayBtn.textContent;
+      dayBtn.innerHTML = `<span class="cal-day-spinner" aria-hidden="true"></span><span class="cal-day-loading-text">${originalDayText}</span>`;
+
       try {
         const { set, remove } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-        const basePath = `/redmarkdates/unique_redmark/${vendorAssignedVenueUid}`;
-        const [yyyy, mm, dd] = isoStr.split('-');
-        const reddateVal = `${dd}/${mm}/${yyyy}|${calendarType}`;
-        const childKey = `${calendarType}_${isoStr}`;
-        const nodePath = `${basePath}/${childKey}`;
 
         if (isAlreadyRed) {
           await remove(ref(db, nodePath));
           calendarDataCache.redAt = 0;
-          dayBtn.classList.remove('is-redmarked');
           redMarkedIsoSet.delete(isoStr);
+          dayBtn.classList.remove('is-redmarked');
+          dayBtn.innerHTML = originalDayText;
+          showVendorCalendarNotice('Date unblocked', 'The date is available again for new requests.', 'info');
         } else {
           await set(ref(db, nodePath), await encryptDeep({
             UID: vendorAssignedVenueUid,
             reddate: reddateVal,
           }));
           calendarDataCache.redAt = 0;
-          dayBtn.classList.add('is-redmarked');
           redMarkedIsoSet.add(isoStr);
+          dayBtn.classList.add('is-redmarked');
+          dayBtn.innerHTML = originalDayText;
+          showVendorCalendarNotice('Date fully reserved', 'This date is now blocked on the vendor and portfolio calendars.', 'approved');
         }
       } catch (e) {
         console.error('[Calendar Redmark Toggle] failed', e);
-      }
-
-      // Selection UI
-      const all = daysContainer.querySelectorAll('.cal-day');
-      all.forEach((x) => x.classList.remove('is-selected'));
-      dayBtn.classList.add('is-selected');
-
-      localStorage.setItem('selectedEventTime', calendarType);
-      localStorage.setItem('selectedEventDate', isoStr);
-      if (typeof window.openEventTypeModal === 'function') {
-        window.openEventTypeModal();
+        dayBtn.innerHTML = originalDayText;
+        showVendorCalendarNotice('Could not update date', 'Please try again.', 'error');
+      } finally {
+        window.__vendorCalendarUpdating = false;
+        dayBtn.classList.remove('is-calendar-updating');
+        dayBtn.setAttribute('aria-busy', 'false');
+        dayBtn.setAttribute('aria-disabled', redMarkedIsoSet.has(isoStr) ? 'true' : 'false');
       }
     });
   }
@@ -949,6 +987,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
           window.__vendorCalendarAutoRefreshTimer = setInterval(() => {
             try {
+              if (window.__vendorCalendarUpdating) return;
               const currentTime = localStorage.getItem('eventTime') || v || 'Morning';
               // important: re-render current selected calendar block only
               // to avoid losing event listeners/classes on other blocks.
@@ -1770,15 +1809,17 @@ async function verifyVendor(username, password) {
 }
 
 
-function setAuthedSession(vendorId) {
+function setAuthedSession(vendorId, source = "") {
   // Auth will be kept only in-memory for this page session.
   // But we also persist assigned venue UID for pending-counter mapping.
   window.__vendor_authed = true;
   window.__vendor_id = vendorId;
+  window.__vendor_source = source || "";
 
   try {
     if (vendorId !== undefined && vendorId !== null) {
       localStorage.setItem("vendorAssignedVenueUid", String(vendorId));
+      if (source) localStorage.setItem("vendorSource", String(source));
     }
   } catch (e) {}
 }
@@ -1787,6 +1828,7 @@ function setAuthedSession(vendorId) {
 function clearSession() {
   window.__vendor_authed = false;
   window.__vendor_id = undefined;
+  window.__vendor_source = "";
 }
 
 function isAuthed() {
@@ -1826,7 +1868,7 @@ verifyForm.addEventListener("submit", async (e) => {
     // Name & Session Logic
     let name = match.record?.vendor_user_name ?? match.record?.user_name ?? match.record?.vendor_user ?? match.record?.user ?? match.record?.UID ?? "Vendor";
     window.__vendor_name = name; 
-    setAuthedSession(match.vendorId);
+    setAuthedSession(match.vendorId, match.source);
     setOverlayHidden(true);
     document.getElementById("pageTitle").textContent = `Welcome ${name}`;
 

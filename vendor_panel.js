@@ -65,7 +65,7 @@ function setAppLoading(show, text = 'Preparing your workspace and syncing the la
 }
 
 
-void Promise.all([getCached('/banquet/unique_bank'), getCached('/hall/unique_hall'), getCached('/user/unique_user')]).catch(e => console.warn('[Vendor cache warm]', e));
+void Promise.all([getCached('/3/4'), getCached('/12/13'), getCached('/9/11')]).catch(e => console.warn('[Vendor cache warm]', e));
 
 function setOverlayHidden(hidden) {
   overlay.setAttribute("aria-hidden", hidden ? "true" : "false");
@@ -111,9 +111,9 @@ function renderView(viewKey) {
   setActiveView(viewKey);
 
   // Cached views switch instantly; only the first cold load shows Loading.
-  const warm = (viewKey === 'vendor-spreadsheet' && hasCached('/user/unique_user')) ||
-               (viewKey === 'vendor-rate' && (hasCached('/banquet/unique_bank') || hasCached('/hall/unique_hall'))) ||
-               (viewKey === 'vendor-management' && (hasCached('/banquet/unique_bank') || hasCached('/hall/unique_hall')));
+  const warm = (viewKey === 'vendor-spreadsheet' && hasCached('/9/11')) ||
+               (viewKey === 'vendor-rate' && (hasCached('/3/4') || hasCached('/12/13'))) ||
+               (viewKey === 'vendor-management' && (hasCached('/3/4') || hasCached('/12/13')));
   setStatus(warm ? 'Live' : 'Loading...');
   viewContainer.innerHTML = '';
 
@@ -142,7 +142,7 @@ function renderView(viewKey) {
         // Home-like banquet cards
         const cardsWrapStyle = 'padding-top:16px;';
 
-        // --- Live Pending Counter (from /user/unique_user by venueID + status) ---
+        // --- Live Pending Counter (from /9/11 by venueID + status) ---
         // PERFORMANCE: Avoid blocking UI. We fetch pending in background.
         const vendorAssignedVenueUid = String(window.__vendor_id ?? '').trim();
 
@@ -201,7 +201,7 @@ function renderView(viewKey) {
 
 
         const { onValue } = await import("https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js");
-        const pendingRef = ref(db, "/user/unique_user");
+        const pendingRef = ref(db, "/9/11");
 
         // NOTE: This pending counter currently does full-table scanning.
         // Spreadsheet view ko fix karna priority hai (big payload). Pending view keep as-is to avoid breaking realtime logic.
@@ -350,7 +350,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
 
         // Banquet
-        const banquetData = await getCached('/banquet/unique_bank');
+        const banquetData = await getCached('/3/4');
         if (banquetData && Object.keys(banquetData).length) {
           const data = banquetData;
           for (const [id, record] of Object.entries(data)) {
@@ -361,7 +361,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         }
 
         // Hall
-        const hallData = await getCached('/hall/unique_hall');
+        const hallData = await getCached('/12/13');
         if (hallData && Object.keys(hallData).length) {
           const data = hallData;
           for (const [id, record] of Object.entries(data)) {
@@ -384,9 +384,9 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         let minExpireDate = '';
         let viewsTotal = 0;
 
-        // Track spreadsheet-style status counts too (if /user/unique_user has status)
+        // Track spreadsheet-style status counts too (if /9/11 has status)
         // PERFORMANCE NOTE:
-        // - We do NOT re-fetch /user/unique_user here.
+        // - We do NOT re-fetch /9/11 here.
         // - But we DO compute spreadsheetPending/Approved/Deny from whatever status fields exist on `results` records.
         //   (Some records may already carry status/approval_status.)
         let spreadsheetPending = 0;
@@ -571,14 +571,14 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
           const venueUid = String(vendorAssignedVenueUid ?? '').trim();
           const preferredSource = String(window.__vendor_source || localStorage.getItem('vendorSource') || '').toLowerCase();
           const paths = preferredSource === 'hall'
-            ? [`/hall/unique_hall/${venueUid}`, `/banquet/unique_bank/${venueUid}`]
+            ? [`/12/13/${venueUid}`, `/3/4/${venueUid}`]
             : preferredSource === 'banquet'
-              ? [`/banquet/unique_bank/${venueUid}`, `/hall/unique_hall/${venueUid}`]
-              : [`/banquet/unique_bank/${venueUid}`, `/hall/unique_hall/${venueUid}`];
+              ? [`/3/4/${venueUid}`, `/12/13/${venueUid}`]
+              : [`/3/4/${venueUid}`, `/12/13/${venueUid}`];
 
           let venue = null;
           for (const path of paths) {
-            const dataPath = path.startsWith('/hall/') ? '/hall/unique_hall' : '/banquet/unique_bank';
+            const dataPath = path.startsWith('/hall/') ? '/12/13' : '/3/4';
             const all = await getCached(dataPath);
             const key = path.split('/').pop();
             const candidate = all?.[key];
@@ -763,11 +763,11 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
           const daysContainer = block.querySelector('[data-calendar-grid] .calendar-days');
           if (!daysContainer) return;
 
-          // booked/approved based on /user/unique_user for this vendor venueId.
+          // booked/approved based on /9/11 for this vendor venueId.
           let bookedSet = new Set();
           let approvedSet = new Set();
 
-          // red-marked dates for this vendor/time (DB: /redmarkdates/unique_redmark/<vendorEnrolledVenueUid>)
+          // red-marked dates for this vendor/time (DB: /7/8/<vendorEnrolledVenueUid>)
           // DB stores `reddate` like: "04/07/2026|Morning"
           let redMarkedIsoSet = new Set();
 
@@ -816,7 +816,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
             if (calendarDataCache.users && (Date.now() - calendarDataCache.usersAt) < CALENDAR_CACHE_MS) {
               all = calendarDataCache.users;
             } else {
-              all = await getCached('/user/unique_user');
+              all = await getCached('/9/11');
               calendarDataCache.users = all;
               calendarDataCache.usersAt = Date.now();
             }
@@ -859,7 +859,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
             if (calendarDataCache.red && (Date.now() - calendarDataCache.redAt) < CALENDAR_CACHE_MS) {
               rmData = calendarDataCache.red;
             } else {
-              const redPath = `/redmarkdates/unique_redmark/${await stablePathKey(vendorAssignedVenueUid, 'redmark-owner')}`;
+              const redPath = `/7/8/${await stablePathKey(vendorAssignedVenueUid, 'redmark-owner')}`;
               rmData = await getCached(redPath);
               calendarDataCache.red = rmData;
               calendarDataCache.redAt = Date.now();
@@ -939,7 +939,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
       }
 
       const isAlreadyRed = redMarkedIsoSet.has(isoStr);
-      const basePath = `/redmarkdates/unique_redmark/${await stablePathKey(vendorAssignedVenueUid, "redmark-owner")}`;
+      const basePath = `/7/8/${await stablePathKey(vendorAssignedVenueUid, "redmark-owner")}`;
       const [yyyy, mm, dd] = isoStr.split('-');
       const reddateVal = `${dd}/${mm}/${yyyy}|${calendarType}`;
       const childKey = await stablePathKey(`${calendarType}|${isoStr}`, "redmark-child");
@@ -1041,8 +1041,8 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
               const currentTime = localStorage.getItem('eventTime') || v || 'Morning';
               renderCalendarFor(currentTime).catch(() => {});
             };
-            window.__vendorCalendarLiveUnsubs.push(subscribeCached('/user/unique_user', refreshVisibleCalendar));
-            const redPath = `/redmarkdates/unique_redmark/${await stablePathKey(vendorAssignedVenueUid, 'redmark-owner')}`;
+            window.__vendorCalendarLiveUnsubs.push(subscribeCached('/9/11', refreshVisibleCalendar));
+            const redPath = `/7/8/${await stablePathKey(vendorAssignedVenueUid, 'redmark-owner')}`;
             window.__vendorCalendarLiveUnsubs.push(subscribeCached(redPath, refreshVisibleCalendar));
           } catch (e) {
             console.warn('[vendor calendar live sync] setup failed', e);
@@ -1196,7 +1196,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
     (async () => {
       try {
-        const data = await getCached('/user/unique_user');
+        const data = await getCached('/9/11');
         const tbody = document.getElementById('vendorRequestsTbody');
         if (!tbody) return;
 
@@ -1358,7 +1358,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
           try {
             setStatus(`Updating ${action === 'approve' ? 'approval' : 'decision'}…`);
             const { set } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-            const recordSnap = await get(ref(db, `/user/unique_user/${rawKey}`));
+            const recordSnap = await get(ref(db, `/9/11/${rawKey}`));
             if (!recordSnap.exists()) throw new Error('User record not found.');
             const currentRecord = await decryptDeep(recordSnap.val());
             if (!sameVenue(currentRecord)) throw new Error('This record is outside your assigned venue.');
@@ -1373,7 +1373,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
             // Persist in Firebase. The realtime cache listener above will reconcile
             // this optimistic state with the encrypted database value automatically.
-            await set(ref(db, `/user/unique_user/${rawKey}`), await encryptDeep(updatedRecord));
+            await set(ref(db, `/9/11/${rawKey}`), await encryptDeep(updatedRecord));
           } catch (err) {
             console.error('Vendor request update failed:', err);
             // Roll back the optimistic paint if Firebase rejected the write.
@@ -1393,7 +1393,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         if (window.__vendorSpreadsheetUnsub) {
           try { window.__vendorSpreadsheetUnsub(); } catch (_) {}
         }
-        window.__vendorSpreadsheetUnsub = subscribeCached('/user/unique_user', (liveData) => {
+        window.__vendorSpreadsheetUnsub = subscribeCached('/9/11', (liveData) => {
           rows = buildRowsFromData(liveData);
           renderRows();
           setStatus('Live');
@@ -1463,7 +1463,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         // Determine vendor record by scanning both banquet + hall once (small tables expected).
         // If banquet match: update standardrate/seasonalrate.
         // If hall match: update standardcost/seasoncost.
-        const banquetData = await getCached('/banquet/unique_bank');
+        const banquetData = await getCached('/3/4');
         let target = null; // { basePath, key, standardField, seasonalField }
         if (banquetData && Object.keys(banquetData).length) {
           const data = banquetData;
@@ -1473,7 +1473,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
             if (uid === String(vendorId)) {
               target = {
                 record: rec,
-                basePath: '/banquet/unique_bank',
+                basePath: '/3/4',
                 key: k,
                 standardField: 'standardrate',
                 seasonalField: 'seasonalrate',
@@ -1486,7 +1486,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         }
 
         if (!target) {
-          const hallData = await getCached('/hall/unique_hall');
+          const hallData = await getCached('/12/13');
           if (hallData && Object.keys(hallData).length) {
             const data = hallData;
             for (const [k, rec] of Object.entries(data)) {
@@ -1495,7 +1495,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
               if (uid === String(vendorId)) {
                 target = {
                   record: rec,
-                  basePath: '/hall/unique_hall',
+                  basePath: '/12/13',
                   key: k,
                   standardField: 'standardcost',
                   seasonalField: 'seasoncost',
@@ -1606,7 +1606,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
         // Current implementation checks both banquet and hall vendor_pass.
         // We update the same node we validate.
-        const banquetRef = ref(db, '/banquet/unique_bank');
+        const banquetRef = ref(db, '/3/4');
         const banquetSnap = await get(banquetRef);
         let target = null;
 
@@ -1617,14 +1617,14 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
             const uidMatch = String(record.UID ?? vid) === String(vendorId);
             const passMatch = String(record.vendor_pass ?? '') === currPass;
             if (uidMatch && passMatch) {
-              target = { path: `/banquet/unique_bank/${vid}`, record };
+              target = { path: `/3/4/${vid}`, record };
               break;
             }
           }
         }
 
         if (!target) {
-          const hallRef = ref(db, '/hall/unique_hall');
+          const hallRef = ref(db, '/12/13');
           const hallSnap = await get(hallRef);
           if (hallSnap.exists()) {
             const data = await decryptDeep(hallSnap.val() || {});
@@ -1633,7 +1633,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
               const uidMatch = String(record.hall_UID ?? record.UID ?? hid) === String(vendorId);
               const passMatch = String(record.vendor_pass ?? '') === currPass;
               if (uidMatch && passMatch) {
-                target = { path: `/hall/unique_hall/${hid}`, record };
+                target = { path: `/12/13/${hid}`, record };
                 break;
               }
             }
@@ -1673,8 +1673,8 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 async function verifyVendor(username, password) {
   // Both venue collections are warmed in parallel and kept live for the whole session.
   const [banquetData, hallData] = await Promise.all([
-    getCached('/banquet/unique_bank'),
-    getCached('/hall/unique_hall')
+    getCached('/3/4'),
+    getCached('/12/13')
   ]);
 
   for (const [vendorId, record] of Object.entries(banquetData || {})) {
@@ -1761,7 +1761,7 @@ verifyForm.addEventListener("submit", async (e) => {
     // Recalculate this exact vendor venue's expiry immediately on login.
     try {
       const { get, set } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-      const basePath = match.source === 'hall' ? '/hall/unique_hall' : '/banquet/unique_bank';
+      const basePath = match.source === 'hall' ? '/12/13' : '/3/4';
       const recordPath = `${basePath}/${match.vendorId}`;
       const freshSnap = await get(ref(db, recordPath));
       if (freshSnap.exists()) {
@@ -1787,7 +1787,7 @@ verifyForm.addEventListener("submit", async (e) => {
             next.expiredate = expire;
             next.countdowndays = String(Math.ceil((expiryDate - today) / 86400000));
             await set(ref(db, recordPath), await encryptDeep(next));
-            seedCached(basePath, { ...(basePath.includes('/banquet/') ? peekCached('/banquet/unique_bank', {}) : peekCached('/hall/unique_hall', {})), [match.vendorId]: next });
+            seedCached(basePath, { ...(basePath.includes('/banquet/') ? peekCached('/3/4', {}) : peekCached('/12/13', {})), [match.vendorId]: next });
             match.record = next;
           }
         }

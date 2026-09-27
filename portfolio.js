@@ -90,9 +90,9 @@ async function attachCalendarRealtimeListeners(uid) {
   calendarRealtimeUnsubs = [];
   calendarRealtimeKey = listenerKey;
 
-  const userRef = ref(database, 'user/unique_user');
+  const userRef = ref(database, '9/11');
   const redKey = await stablePathKey(uid, 'redmark-owner');
-  const redRef = ref(database, `/redmarkdates/unique_redmark/${redKey}`);
+  const redRef = ref(database, `/7/8/${redKey}`);
 
   const refreshFromLive = async (userValue, redValue) => {
     try {
@@ -136,8 +136,8 @@ async function loadCalendarData(force = false) {
   calendarDataCacheKey = cacheKey;
   calendarDataRefreshPromise = (async () => {
     const [userSnap, redSnap] = await Promise.all([
-      get(ref(database, 'user/unique_user')),
-      stablePathKey(uid, 'redmark-owner').then(key => get(ref(database, `/redmarkdates/unique_redmark/${key}`)))
+      get(ref(database, '9/11')),
+      stablePathKey(uid, 'redmark-owner').then(key => get(ref(database, `/7/8/${key}`)))
     ]);
 
     calendarDataCache = await buildCalendarDataFromSnapshots(
@@ -249,14 +249,31 @@ function toEmbedUrl(videoUrl) {
   if (shortMatch?.[1]) return `https://www.youtube.com/embed/${shortMatch[1]}?rel=0&vq=hd1080`;
   const shortsMatch = candidate.match(/youtube\.com\/shorts\/([^?&#/]+)/i);
   if (shortsMatch?.[1]) return `https://www.youtube.com/embed/${shortsMatch[1]}?rel=0&vq=hd1080`;
-  return candidate;
+
+  // Do not pass arbitrary DB values (e.g. "/dasd") into an iframe.
+  // Only accepted video sources should reach the iframe.
+  try {
+    const parsed = new URL(candidate, window.location.href);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const isYouTubeHost =
+      host === 'youtube.com' ||
+      host === 'm.youtube.com' ||
+      host === 'youtu.be' ||
+      host === 'youtube-nocookie.com';
+
+    if (!isYouTubeHost) return '';
+  } catch {
+    return '';
+  }
+
+  return '';
 }
 
 
 async function fetchVenueByUid(portfolioType, uid) {
   if (!uid) return null;
 
-  const collectionPath = portfolioType === 'hall' ? 'hall/unique_hall' : 'banquet/unique_bank';
+  const collectionPath = portfolioType === 'hall' ? '12/13' : '3/4';
   const directSnapshot = await get(ref(database, `${collectionPath}/${uid}`));
 
   if (directSnapshot.exists()) {
@@ -550,7 +567,6 @@ export async function initPortfolio() {
         heroBgGalleryEl.appendChild(el);
       });
 
-      // For click-to-view UI
       const heroImagePrevBtn = document.getElementById('heroImagePrevBtn');
       const heroImageNextBtn = document.getElementById('heroImageNextBtn');
       let currentIdx = 0;
@@ -562,116 +578,102 @@ export async function initPortfolio() {
         });
       };
 
-
       const openImageView = () => {
         if (!imgs.length) return;
-        applyVisibleImage();
 
         const overlay = document.getElementById('heroImageModalOverlay');
         const modalImg = document.getElementById('heroImageModalImg');
         const prevBtn = document.getElementById('heroImageModalPrevBtn');
         const nextBtn = document.getElementById('heroImageModalNextBtn');
         const closeBtn = document.getElementById('heroImageModalCloseX');
+        const counter = document.getElementById('heroImageModalCounter');
+        const loading = overlay?.querySelector('.premium-image-viewer__loading');
 
         if (!overlay || !modalImg) {
-
-          // fallback: just scroll
           const heroSlider = document.querySelector('.hero-slider-container');
           if (heroSlider) heroSlider.scrollIntoView({ behavior: 'smooth', block: 'start' });
           return;
         }
 
-        const setModalImage = () => {
-          modalImg.src = imgs[currentIdx] || '';
+        const updateCounter = () => {
+          if (counter) counter.textContent = `${currentIdx + 1} / ${imgs.length}`;
         };
 
-        setModalImage();
-
-        // Ensure prev/next buttons are shown/hidden based on number of images
-        if (prevBtn) prevBtn.style.display = imgs.length > 1 ? 'flex' : 'none';
-        if (nextBtn) nextBtn.style.display = imgs.length > 1 ? 'flex' : 'none';
-
-        overlay.style.display = 'flex';
-        overlay.setAttribute('aria-hidden', 'false');
-
+        const setModalImage = () => {
+          const src = imgs[currentIdx] || '';
+          if (loading) loading.style.display = 'grid';
+          modalImg.style.opacity = '0';
+          modalImg.onload = () => {
+            if (loading) loading.style.display = 'none';
+            modalImg.style.opacity = '1';
+          };
+          modalImg.onerror = () => {
+            if (loading) loading.style.display = 'none';
+            modalImg.style.opacity = '1';
+          };
+          modalImg.src = src;
+          modalImg.alt = `${portfolioType === 'hall' ? 'Hall' : 'Banquet'} image ${currentIdx + 1}`;
+          updateCounter();
+        };
 
         const onPrev = () => {
           currentIdx = (currentIdx - 1 + imgs.length) % imgs.length;
-          // Only change modal image; keep hero cover images fixed.
           setModalImage();
         };
 
         const onNext = () => {
           currentIdx = (currentIdx + 1) % imgs.length;
-          // Only change modal image; keep hero cover images fixed.
           setModalImage();
         };
 
-        // Mobile swipe support: swipe left => next, swipe right => prev
-        let touchStartX = null;
-        let touchStartY = null;
-        const onTouchStart = (ev) => {
-          if (!ev || !ev.touches || !ev.touches[0]) return;
-          touchStartX = ev.touches[0].clientX;
-          touchStartY = ev.touches[0].clientY;
-        };
-        const onTouchEnd = (ev) => {
-          if (!touchStartX && touchStartX !== 0) return;
-          if (!ev || !ev.changedTouches || !ev.changedTouches[0]) return;
-
-          const endX = ev.changedTouches[0].clientX;
-          const endY = ev.changedTouches[0].clientY;
-
-          const dx = endX - touchStartX;
-          const dy = endY - touchStartY;
-
-          // Ignore mostly vertical swipes
-          if (Math.abs(dy) > Math.abs(dx)) return;
-
-          const TH = 45; // swipe threshold in px
-          if (dx <= -TH) {
-            onNext();
-          } else if (dx >= TH) {
-            onPrev();
-          }
-
-          touchStartX = null;
-          touchStartY = null;
+        const closeViewer = () => {
+          overlay.style.display = 'none';
+          overlay.setAttribute('aria-hidden', 'true');
+          document.body.classList.remove('premium-image-viewer-open');
         };
 
+        setModalImage();
 
-
-
-        // Remove previous handlers by cloning if needed (simple approach: overwrite by setting once)
+        const hasMultiple = imgs.length > 1;
         if (prevBtn) {
-          prevBtn.onclick = null;
-          prevBtn.onclick = (e) => { e && e.stopPropagation && e.stopPropagation(); onPrev(); };
+          prevBtn.style.display = 'grid';
+          prevBtn.setAttribute('aria-disabled', hasMultiple ? 'false' : 'true');
+          prevBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onPrev();
+          };
         }
         if (nextBtn) {
-          nextBtn.onclick = null;
-          nextBtn.onclick = (e) => { e && e.stopPropagation && e.stopPropagation(); onNext(); };
+          nextBtn.style.display = 'grid';
+          nextBtn.setAttribute('aria-disabled', hasMultiple ? 'false' : 'true');
+          nextBtn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onNext();
+          };
         }
         if (closeBtn) {
-          closeBtn.onclick = null;
           closeBtn.onclick = (e) => {
-            e && e.stopPropagation && e.stopPropagation();
-            overlay.style.display = 'none';
-            overlay.setAttribute('aria-hidden', 'true');
+            e.preventDefault();
+            e.stopPropagation();
+            closeViewer();
           };
         }
 
-        overlay.onclick = (e) => {
-          if (e.target === overlay) {
-            overlay.style.display = 'none';
-            overlay.setAttribute('aria-hidden', 'true');
-          }
-        };
+        overlay.querySelectorAll('[data-image-viewer-close]').forEach((backdrop) => {
+          backdrop.onclick = (e) => {
+            e.preventDefault();
+            closeViewer();
+          };
+        });
+
+        overlay.style.display = 'flex';
+        overlay.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('premium-image-viewer-open');
       };
 
-
-      // Make controls work if present
       const heroImageViewBtn = document.getElementById('heroImageViewBtn');
-
       if (heroImageViewBtn) {
         heroImageViewBtn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -680,10 +682,7 @@ export async function initPortfolio() {
         });
       }
 
-
-
       if (heroImagePrevBtn) {
-
         heroImagePrevBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           if (!imgs.length) return;
@@ -701,13 +700,43 @@ export async function initPortfolio() {
         });
       }
 
-      // Click anywhere on hero background to open image view
+      // Keyboard controls for the premium viewer.
+      document.addEventListener('keydown', (e) => {
+        const overlay = document.getElementById('heroImageModalOverlay');
+        if (!overlay || overlay.getAttribute('aria-hidden') !== 'false') return;
+
+        if (e.key === 'Escape') {
+          const closeBtn = document.getElementById('heroImageModalCloseX');
+          if (closeBtn) closeBtn.click();
+        } else if (e.key === 'ArrowLeft' && imgs.length > 1) {
+          currentIdx = (currentIdx - 1 + imgs.length) % imgs.length;
+          const img = document.getElementById('heroImageModalImg');
+          if (img) {
+            img.style.opacity = '0';
+            img.onload = () => { img.style.opacity = '1'; };
+            img.src = imgs[currentIdx];
+          }
+          const counter = document.getElementById('heroImageModalCounter');
+          if (counter) counter.textContent = `${currentIdx + 1} / ${imgs.length}`;
+        } else if (e.key === 'ArrowRight' && imgs.length > 1) {
+          currentIdx = (currentIdx + 1) % imgs.length;
+          const img = document.getElementById('heroImageModalImg');
+          if (img) {
+            img.style.opacity = '0';
+            img.onload = () => { img.style.opacity = '1'; };
+            img.src = imgs[currentIdx];
+          }
+          const counter = document.getElementById('heroImageModalCounter');
+          if (counter) counter.textContent = `${currentIdx + 1} / ${imgs.length}`;
+        }
+      });
+
+      // Click anywhere on hero background/text to open the premium viewer.
       heroBgGalleryEl.addEventListener('click', (e) => {
         e.stopPropagation();
         openImageView();
       });
 
-      // Also click on hero text to open
       const heroText = document.querySelector('.hero-text');
       if (heroText) {
         heroText.addEventListener('click', (e) => {
@@ -716,11 +745,9 @@ export async function initPortfolio() {
         });
       }
 
-      // Initialize first
       applyVisibleImage();
     }
   }
-
 
   // Cinematic (YouTube video wala section)
   // DB column: ytlink (Banquet + Hall dono me expected)
@@ -732,12 +759,13 @@ export async function initPortfolio() {
     );
     const embedUrl = toEmbedUrl(videoUrlFromDb);
 
+    const currentVideoSrc = videoIframe.getAttribute('src') || '';
     if (embedUrl) {
-      videoIframe.src = embedUrl;
+      if (currentVideoSrc !== embedUrl) videoIframe.src = embedUrl;
       cinematicBox.style.display = 'block';
     } else {
       cinematicBox.style.display = 'none';
-      videoIframe.src = '';
+      if (currentVideoSrc) videoIframe.removeAttribute('src');
     }
   }
 }
@@ -1269,12 +1297,8 @@ function initUserDetailsFlow() {
     });
   }
 
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) {
-      setError('');
-      closeUserDetailsModal();
-    }
-  });
+  // Backdrop clicks intentionally do not close the user-details modal; use the X button.
+  overlay.addEventListener('click', (e) => { e.stopPropagation(); });
 
   if (okBtn) {
     okBtn.addEventListener('click', () => {
@@ -1373,12 +1397,12 @@ function initConfirmationFlow() {
 
 
         // Incrementing UID style: 0001, 0002, 0003...
-        // Use Firebase /user/currentid as the source to reduce duplication across devices.
+        // Use Firebase /9/10 as the source to reduce duplication across devices.
         // (Not a transaction; if you expect very high concurrency, we should switch to a transaction.)
         const LIMIT = 999999;
         let user_UID = '';
         try {
-          const currentIdSnap = await get(ref(database, 'user/currentid'));
+          const currentIdSnap = await get(ref(database, '9/10'));
           const currentIdRaw = currentIdSnap.exists() ? currentIdSnap.val() : 0;
           const currentId = Number(currentIdRaw) || 0;
 
@@ -1389,7 +1413,7 @@ function initConfirmationFlow() {
           const nextId = ((rangeSeed + randomWithin) % LIMIT) + 1;
 
           // update so next request uses next key
-          await set(ref(database, 'user/currentid'), nextId);
+          await set(ref(database, '9/10'), nextId);
 
           user_UID = String(nextId).padStart(4, '0');
 
@@ -1444,9 +1468,9 @@ function initConfirmationFlow() {
           return;
         }
 
-        // Save to: Firebase(/user/unique_user/) using the random id as key
-        // (Firebase RTDB path: /user/unique_user/{user_UID})
-        const userRef = ref(database, `user/unique_user/${user_UID}`);
+        // Save to: Firebase(/9/11/) using the random id as key
+        // (Firebase RTDB path: /9/11/{user_UID})
+        const userRef = ref(database, `9/11/${user_UID}`);
         await set(userRef, await encryptDeep(payload));
 
         // Repaint immediately: the newly submitted request appears yellow/pending
@@ -1512,8 +1536,8 @@ async function handleLocationRedirect() {
     }
 
     const dbPath = portfolioType === 'hall'
-      ? 'hall/unique_hall'
-      : 'banquet/unique_bank';
+      ? '12/13'
+      : '3/4';
 
     const snapshot = await get(ref(database, dbPath));
     if (!snapshot.exists()) {

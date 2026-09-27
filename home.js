@@ -230,9 +230,9 @@ async function fetchFreshData(path) {
       list.push({ ...it, uid: it.UID ?? k });
     }
   }
-  if (path === 'banquet/unique_bank') allBanquets = list;
-  if (path === 'hall/unique_hall') allHalls = list;
-  if (document.readyState !== 'loading' && (path === 'banquet/unique_bank' || path === 'hall/unique_hall')) {
+  if (path === '3/4') allBanquets = list;
+  if (path === '12/13') allHalls = list;
+  if (document.readyState !== 'loading' && (path === '3/4' || path === '12/13')) {
     try { applySearch(); } catch (_) {}
   }
   return list;
@@ -262,8 +262,8 @@ function hideLoadingOverlay() {
 
   try {
     [allBanquets, allHalls] = await Promise.all([
-      loadData('banquet/unique_bank'),
-      loadData('hall/unique_hall')
+      loadData('3/4'),
+      loadData('12/13')
     ]);
   } finally {
     hideLoadingOverlay();

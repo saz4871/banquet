@@ -2,10 +2,10 @@ import { database } from './firebaseconfig.js';
 import { decryptDeep, stablePathKey } from './encryption/encryption.js';
 import { get, ref, remove, runTransaction, onValue } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
 
-const VIEW_COUNTER_ROOT = 'analytics/venueViews';
+const VIEW_COUNTER_ROOT = '1/2';
 
 function venueRecordPath(portfolioType) {
-  return portfolioType === 'hall' ? 'hall/unique_hall' : 'banquet/unique_bank';
+  return portfolioType === 'hall' ? '12/13' : '3/4';
 }
 
 async function getLegacyViews(portfolioType, uid) {

@@ -12,11 +12,51 @@ import { database } from "../firebaseconfig.js";
 import { ref, get, set, remove } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 import { encryptDeep, decryptDeep, stablePathKey } from "./encryption.js";
 
-const DONE_KEY = "event_vault_encryption_migration_v2";
+const DONE_KEY = "event_vault_encryption_migration_v3_numeric_schema";
 const PREFIX = "EV1.";
 
 function isEncryptedEnvelope(value) {
   return typeof value === "string" && value.startsWith(PREFIX);
+}
+
+
+const LEGACY_SCHEMA_MIGRATION = [
+  ["/analytics/venueViews", "/1/2"],
+  ["/banquet/unique_bank", "/3/4"],
+  ["/data/twostepauthkey", "/5/6"],
+  ["/redmarkdates/unique_redmark", "/7/8"],
+  ["/user/currentid", "/9/10"],
+  ["/user/unique_user", "/9/11"],
+];
+
+async function migrateLegacySchemaPaths() {
+  const moved = [];
+  for (const [legacyPath, numericPath] of LEGACY_SCHEMA_MIGRATION) {
+    const oldRef = ref(database, legacyPath);
+    const newRef = ref(database, numericPath);
+    const oldSnap = await get(oldRef);
+    if (!oldSnap.exists()) continue;
+
+    const newSnap = await get(newRef);
+    const oldValue = oldSnap.val();
+
+    if (!newSnap.exists()) {
+      await set(newRef, oldValue);
+    } else if (
+      oldValue && typeof oldValue === "object" &&
+      !Array.isArray(oldValue) &&
+      newSnap.val() && typeof newSnap.val() === "object" &&
+      !Array.isArray(newSnap.val())
+    ) {
+      // Preserve records already present at the numeric path; fill only missing keys.
+      const merged = { ...oldValue, ...newSnap.val() };
+      await set(newRef, merged);
+    }
+
+    await remove(oldRef);
+    moved.push({ from: legacyPath, to: numericPath });
+  }
+  return moved;
 }
 
 async function migrateCollection(path) {
@@ -44,7 +84,7 @@ async function migrateCollection(path) {
 }
 
 async function migrateRedmarks() {
-  const rootPath = "/redmarkdates/unique_redmark";
+  const rootPath = "/7/8";
   const snap = await get(ref(database, rootPath));
   if (!snap.exists()) return { owners: 0, records: 0 };
 
@@ -110,17 +150,19 @@ export async function migrateExistingDatabaseEncryption({ force = false } = {}) 
     } catch (_) {}
   }
 
+  const schemaMoves = await migrateLegacySchemaPaths();
+
   const results = [];
-  results.push(await migrateCollection("/banquet/unique_bank"));
-  results.push(await migrateCollection("/hall/unique_hall"));
-  results.push(await migrateCollection("/user/unique_user"));
-  results.push(await migrateCollection("/data/twostepauthkey"));
-  results.push(await migrateCollection("/user/currentid"));
+  results.push(await migrateCollection("/3/4"));
+  results.push(await migrateCollection("/12/13"));
+  results.push(await migrateCollection("/9/11"));
+  results.push(await migrateCollection("/5/6"));
+  results.push(await migrateCollection("/9/10"));
   const redmarks = await migrateRedmarks();
 
   try {
     localStorage.setItem(DONE_KEY, "1");
   } catch (_) {}
 
-  return { skipped: false, results, redmarks };
+  return { skipped: false, schemaMoves, results, redmarks };
 }

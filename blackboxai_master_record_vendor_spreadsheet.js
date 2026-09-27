@@ -165,9 +165,9 @@ export async function initMasterRecordVendorSpreadsheet() {
     // All three sources are kept in one live decrypted cache. Switching back
     // to Master Record therefore paints immediately without another download.
     const [userData, banquetData, hallData] = await Promise.all([
-      getCached('/user/unique_user'),
-      getCached('/banquet/unique_bank'),
-      getCached('/hall/unique_hall'),
+      getCached('/9/11'),
+      getCached('/3/4'),
+      getCached('/12/13'),
     ]);
 
     if (!userData || !Object.keys(userData).length) {
@@ -334,9 +334,9 @@ export async function initMasterRecordVendorSpreadsheet() {
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => loadRows().catch(console.error), 120);
   };
-  subscribeCached('/user/unique_user', liveRefresh);
-  subscribeCached('/banquet/unique_bank', liveRefresh);
-  subscribeCached('/hall/unique_hall', liveRefresh);
+  subscribeCached('/9/11', liveRefresh);
+  subscribeCached('/3/4', liveRefresh);
+  subscribeCached('/12/13', liveRefresh);
 
   await loadRows();
 }

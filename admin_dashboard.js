@@ -3,9 +3,9 @@ import { migrateExistingDatabaseEncryption } from "./encryption/migrate.js";
 import { getCached, hasCached, subscribeCached, peekCached, invalidateCached, seedCached } from "./data_cache.js";
 import { deletePortfolioViewCounter } from "./view_tracker.js";
 
-const ADMIN_AUTH_PATH = "data/twostepauthkey";
+const ADMIN_AUTH_PATH = "5/6";
 const LEGACY_ADMIN_AUTH_PATH = "banquet/twostepauthkey";
-const VENUE_PATHS = ["/banquet/unique_bank", "/hall/unique_hall"];
+const VENUE_PATHS = ["/3/4", "/12/13"];
 const VENUE_LIFETIME_DAYS = 30;
 
 function openAdminActionModal({
@@ -709,7 +709,7 @@ function renderView(key) {
   viewContainer.innerHTML = html;
 
   if (statusPill) {
-    statusPill.textContent = (key === 'banquet-spreadsheet' && hasCached('/banquet/unique_bank')) || (key === 'hall-spreadsheet' && hasCached('/hall/unique_hall')) ? 'Live' : 'Loading...';
+    statusPill.textContent = (key === 'banquet-spreadsheet' && hasCached('/3/4')) || (key === 'hall-spreadsheet' && hasCached('/12/13')) ? 'Live' : 'Loading...';
   }
 
 // Naya Update: Banquet management view ke liye engine activate karein
@@ -775,8 +775,8 @@ function renderView(key) {
 
           // Paint the saved record into the decrypted cache immediately so the
           // spreadsheet never waits for Firebase's next onValue tick.
-          const currentBanquets = peekCached('/banquet/unique_bank', {});
-          seedCached('/banquet/unique_bank', {
+          const currentBanquets = peekCached('/3/4', {});
+          seedCached('/3/4', {
             ...(currentBanquets && typeof currentBanquets === 'object' ? currentBanquets : {}),
             [saved.key]: { ...(saved.record || {}), UID: saved.key },
           });
@@ -868,8 +868,8 @@ function renderView(key) {
             pill.style.borderColor = 'rgba(52, 211, 153, 0.5)';
           }
 
-          const currentHalls = peekCached('/hall/unique_hall', {});
-          seedCached('/hall/unique_hall', {
+          const currentHalls = peekCached('/12/13', {});
+          seedCached('/12/13', {
             ...(currentHalls && typeof currentHalls === 'object' ? currentHalls : {}),
             [saved.key]: { ...(saved.record || {}), UID: saved.key, hall_UID: saved.key },
           });
@@ -1530,7 +1530,7 @@ async function isVenueUidAvailable(path, candidate) {
 }
 
 async function prepareNewVenueUid(kind) {
-  const path = kind === 'hall' ? '/hall/unique_hall' : '/banquet/unique_bank';
+  const path = kind === 'hall' ? '/12/13' : '/3/4';
   const inputId = kind === 'hall' ? 'hall_uid' : 'banquet_uid';
   const keyId = kind === 'hall' ? 'hall_uid_key' : 'banquet_uid_key';
   const input = document.getElementById(inputId);
@@ -1558,7 +1558,7 @@ function getBanquetPayloadFromForm() {
   const cover = getElVal('banquet_img') || galleryUrls[0] || '';
 
 
-  // DB shape from haha.json: banquet/unique_bank/{key}/specialisation is a single string.
+  // DB shape from haha.json: 3/4/{key}/specialisation is a single string.
   const specLabels = [];
   if (getChecked('banquet_spec_lux')) specLabels.push('Luxury Seating/Suite');
   if (getChecked('banquet_spec_master_class')) specLabels.push('Master-Class Catering Team');
@@ -1635,9 +1635,9 @@ async function upsertBanquetRecord() {
   const existingKey = (document.getElementById('banquet_uid_key')?.value || '').trim();
   if (!existingKey) {
     const displayedUid = String(document.getElementById('banquet_uid')?.value || '').trim();
-    const generatedUid = await isVenueUidAvailable('/banquet/unique_bank', displayedUid)
+    const generatedUid = await isVenueUidAvailable('/3/4', displayedUid)
       ? displayedUid
-      : await generateUniqueVenueUid('/banquet/unique_bank');
+      : await generateUniqueVenueUid('/3/4');
     const uidEl = document.getElementById('banquet_uid');
     if (uidEl) uidEl.value = generatedUid;
     formPayload.UID = generatedUid;
@@ -1653,7 +1653,7 @@ async function upsertBanquetRecord() {
   }
 
   // Path hamesha fixed rahega, nesting nahi hogi[cite: 3]
-  const recordPath = `banquet/unique_bank/${recordKey}`;
+  const recordPath = `3/4/${recordKey}`;
   
   // Pehle check karein record hai ya nahi[cite: 3]
   const snap = await get(ref(database, recordPath));
@@ -1667,7 +1667,7 @@ async function upsertBanquetRecord() {
 
   // Sahi path par data set/update karein[cite: 3]
   await set(ref(database, recordPath), await encryptDeep(payloadToSave));
-  invalidateCached('banquet/unique_bank');
+  invalidateCached('3/4');
 
   // Return mode takay UI ko update ki success ka pata chale[cite: 3]
   return { mode: exists ? 'update' : 'create', path: recordPath, key: recordKey, record: payloadToSave };
@@ -2447,9 +2447,9 @@ async function upsertHallRecord() {
   const existingKey = String(document.getElementById('hall_uid_key')?.value || '').trim();
   if (!existingKey) {
     const displayedUid = String(document.getElementById('hall_uid')?.value || '').trim();
-    const generatedUid = await isVenueUidAvailable('/hall/unique_hall', displayedUid)
+    const generatedUid = await isVenueUidAvailable('/12/13', displayedUid)
       ? displayedUid
-      : await generateUniqueVenueUid('/hall/unique_hall');
+      : await generateUniqueVenueUid('/12/13');
     const uidEl = document.getElementById('hall_uid');
     if (uidEl) uidEl.value = generatedUid;
     formPayload.UID = generatedUid;
@@ -2462,13 +2462,13 @@ async function upsertHallRecord() {
 
   if (!recordKey) throw new Error('UID key missing');
 
-  const recordPath = `hall/unique_hall/${recordKey}`;
+  const recordPath = `12/13/${recordKey}`;
   const snap = await get(ref(database, recordPath));
   const exists = snap.exists();
 
   const payloadToSave = { ...formPayload, UID: String(recordKey), hall_UID: String(recordKey) };
   await set(ref(database, recordPath), await encryptDeep(payloadToSave));
-  invalidateCached('hall/unique_hall');
+  invalidateCached('12/13');
 
   return { mode: exists ? 'update' : 'create', path: recordPath, key: recordKey, record: payloadToSave };
 }
@@ -2479,7 +2479,7 @@ async function loadHallSpreadsheetRows() {
   const tbody = table.querySelector('tbody');
   if (!tbody) return;
 
-  const alreadyCached = hasCached('/hall/unique_hall');
+  const alreadyCached = hasCached('/12/13');
   if (!alreadyCached) {
     tbody.innerHTML = '';
     const tr = document.createElement('tr');
@@ -2493,7 +2493,7 @@ async function loadHallSpreadsheetRows() {
   }
 
   try {
-    const uniqueHallObj = await getCached('/hall/unique_hall');
+    const uniqueHallObj = await getCached('/12/13');
     tbody.innerHTML = '';
 
     if (!uniqueHallObj || !Object.keys(uniqueHallObj).length) {
@@ -2517,7 +2517,7 @@ async function loadHallSpreadsheetRows() {
         hallKey,
         UID: hall_UID ? String(hall_UID) : '',
         raw: hallVal,
-        deletePath: `hall/unique_hall/${hallKey}`,
+        deletePath: `12/13/${hallKey}`,
       });
     });
 
@@ -2612,9 +2612,9 @@ async function loadHallSpreadsheetRows() {
           const { ref, remove } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
           await remove(ref(database, row.deletePath));
           await deletePortfolioViewCounter({ portfolioType: 'hall', uid: row.UID });
-          const nextHalls = { ...(peekCached('/hall/unique_hall', {}) || {}) };
+          const nextHalls = { ...(peekCached('/12/13', {}) || {}) };
           delete nextHalls[row.deletePath.split('/').pop()];
-          seedCached('/hall/unique_hall', nextHalls);
+          seedCached('/12/13', nextHalls);
           await loadHallSpreadsheetRows();
           await showAdminNotice('Hall deleted', `UID ${row.UID} was removed successfully.`, { eyebrow: 'HALL SPREADSHEET' });
         });
@@ -2638,7 +2638,7 @@ async function loadBanquetSpreadsheetRows() {
   const tbody = table.querySelector("tbody");
   if (!tbody) return;
 
-  const alreadyCached = hasCached('/banquet/unique_bank');
+  const alreadyCached = hasCached('/3/4');
   if (!alreadyCached) {
     tbody.innerHTML = "";
     const tr = document.createElement("tr");
@@ -2652,7 +2652,7 @@ async function loadBanquetSpreadsheetRows() {
   }
 
   try {
-    const uniqueBankObj = await getCached('/banquet/unique_bank');
+    const uniqueBankObj = await getCached('/3/4');
     tbody.innerHTML = "";
 
     if (!uniqueBankObj || !Object.keys(uniqueBankObj).length) {
@@ -2674,7 +2674,7 @@ async function loadBanquetSpreadsheetRows() {
       rows.push({
         UID: UID ? String(UID) : "",
         raw: uidVal,
-        deletePath: `banquet/unique_bank/${uidKey}`,
+        deletePath: `3/4/${uidKey}`,
       });
     });
 
@@ -2784,9 +2784,9 @@ async function loadBanquetSpreadsheetRows() {
             );
             await remove(ref(database, row.deletePath));
             await deletePortfolioViewCounter({ portfolioType: 'banquet', uid: row.UID });
-            const nextBanquets = { ...(peekCached('/banquet/unique_bank', {}) || {}) };
+            const nextBanquets = { ...(peekCached('/3/4', {}) || {}) };
             delete nextBanquets[row.deletePath.split('/').pop()];
-            seedCached('/banquet/unique_bank', nextBanquets);
+            seedCached('/3/4', nextBanquets);
             await loadBanquetSpreadsheetRows();
             await showAdminNotice('Banquet deleted', `UID ${row.UID} was removed successfully.`, { eyebrow: 'BANQUET SPREADSHEET' });
           } catch (e) {
@@ -2843,22 +2843,22 @@ async function init() {
   // Warm the three admin data sources once. Firebase onValue keeps them live;
   // spreadsheet tabs reuse this decrypted cache instead of downloading again.
   void Promise.all([
-    getCached('/banquet/unique_bank'),
-    getCached('/hall/unique_hall'),
-    getCached('/user/unique_user')
+    getCached('/3/4'),
+    getCached('/12/13'),
+    getCached('/9/11')
   ]).catch((e) => console.error('[Event Vault] cache warm failed', e));
 
   const scheduleLiveRefresh = (viewKey, loader) => {
     let timer = null;
     subscribeCached(viewKey, () => {
       const active = navItems.find((b) => b.classList.contains('is-active'))?.dataset.view;
-      if (active !== (viewKey === '/banquet/unique_bank' ? 'banquet-spreadsheet' : viewKey === '/hall/unique_hall' ? 'hall-spreadsheet' : 'master-record')) return;
+      if (active !== (viewKey === '/3/4' ? 'banquet-spreadsheet' : viewKey === '/12/13' ? 'hall-spreadsheet' : 'master-record')) return;
       clearTimeout(timer);
       timer = setTimeout(() => loader().catch(console.error), 120);
     });
   };
-  scheduleLiveRefresh('/banquet/unique_bank', loadBanquetSpreadsheetRows);
-  scheduleLiveRefresh('/hall/unique_hall', loadHallSpreadsheetRows);
+  scheduleLiveRefresh('/3/4', loadBanquetSpreadsheetRows);
+  scheduleLiveRefresh('/12/13', loadHallSpreadsheetRows);
 
   const active = navItems.find((b) => b.classList.contains("is-active"));
   const initialKey = active?.dataset.view || navItems[0]?.dataset.view;

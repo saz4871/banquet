@@ -1,0 +1,58 @@
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;500;600;700&display=swap');
+
+.ev-language-overlay{
+  position:fixed;inset:0;z-index:2147483000;display:grid;place-items:center;
+  padding:22px;background:rgba(5,7,10,.72);backdrop-filter:blur(18px) saturate(125%);
+  opacity:1;transition:opacity .18s ease;
+}
+.ev-language-overlay.is-closing{opacity:0;pointer-events:none}
+.ev-language-backdrop{position:absolute;inset:0}
+.ev-language-card{
+  position:relative;width:min(520px,100%);overflow:hidden;
+  padding:34px 34px 26px;border:1px solid rgba(255,255,255,.13);border-radius:28px;
+  background:linear-gradient(145deg,rgba(24,27,33,.98),rgba(11,13,17,.98));
+  box-shadow:0 35px 100px rgba(0,0,0,.48),0 0 0 1px rgba(198,155,88,.06);
+  color:#fff;font-family:'DM Sans',system-ui,sans-serif;
+  transform:translateY(0) scale(1);transition:transform .18s ease;
+}
+.ev-language-overlay.is-closing .ev-language-card{transform:translateY(8px) scale(.985)}
+.ev-language-glow{position:absolute;width:240px;height:240px;right:-100px;top:-130px;border-radius:50%;
+  background:radial-gradient(circle,rgba(198,155,88,.25),transparent 68%);pointer-events:none}
+.ev-language-brand{display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.18em;font-weight:900;color:#d7dbe1}
+.ev-language-mark{display:grid;place-items:center;width:31px;height:31px;border-radius:10px;
+  background:linear-gradient(135deg,#e8c98f,#a77b3d);color:#111;font-size:10px;letter-spacing:-.04em;
+  box-shadow:0 8px 24px rgba(198,155,88,.18)}
+.ev-language-icon{width:54px;height:54px;display:grid;place-items:center;margin:28px 0 13px;
+  border-radius:17px;background:rgba(198,155,88,.11);border:1px solid rgba(229,197,141,.18);
+  color:#e5c58d;font-size:25px;font-weight:700}
+.ev-language-overline{margin:0 0 7px;color:#c7a56e;font-size:10px;letter-spacing:.2em;font-weight:900}
+.ev-language-card h2{margin:0;font-size:29px;line-height:1.12;letter-spacing:-.04em}
+.ev-language-subtitle{margin:10px 0 22px;color:#969da7;font-size:13px;line-height:1.65}
+.ev-language-options{display:grid;gap:10px}
+.ev-language-option{
+  width:100%;display:grid;grid-template-columns:46px 1fr 24px;align-items:center;gap:13px;
+  padding:13px 14px;border:1px solid rgba(255,255,255,.09);border-radius:16px;
+  background:rgba(255,255,255,.045);color:#fff;text-align:left;cursor:pointer;
+  transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease;
+}
+.ev-language-option:hover{transform:translateY(-2px);border-color:rgba(229,197,141,.42);
+  background:rgba(198,155,88,.09);box-shadow:0 12px 28px rgba(0,0,0,.18)}
+.ev-language-option-icon{display:grid;place-items:center;width:46px;height:42px;border-radius:12px;
+  background:#f4f0e8;color:#15171b;font-size:12px;font-weight:900}
+.ev-language-option-icon--ur{font-family:'Noto Naskh Arabic',serif;font-size:19px;background:#e8c98f}
+.ev-language-option strong{display:block;font-size:14px;font-weight:900}
+.ev-language-option small{display:block;margin-top:2px;color:#858c96;font-size:10px;font-weight:600}
+.ev-language-arrow{color:#c7a56e;font-size:20px;text-align:center}
+.ev-language-footer{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:19px;color:#656c75;font-size:9px;font-weight:700;letter-spacing:.02em}
+html[data-language="ur"] body,.is-urdu{font-family:'Noto Naskh Arabic','DM Sans',sans-serif}
+html[data-language="ur"] input,html[data-language="ur"] button,html[data-language="ur"] select,html[data-language="ur"] textarea{
+  font-family:'Noto Naskh Arabic','DM Sans',sans-serif;
+}
+html[data-language="ur"] .ev-language-card{font-family:'Noto Naskh Arabic','DM Sans',sans-serif}
+html[data-language="ur"] .ev-language-card h2{font-size:30px;line-height:1.35}
+@media (max-width:560px){
+  .ev-language-card{padding:28px 20px 22px;border-radius:23px}
+  .ev-language-card h2{font-size:25px}
+  .ev-language-subtitle{font-size:12px}
+}

@@ -7,6 +7,90 @@ const ADMIN_AUTH_PATH = "data/twostepauthkey";
 const LEGACY_ADMIN_AUTH_PATH = "banquet/twostepauthkey";
 const VENUE_PATHS = ["/banquet/unique_bank", "/hall/unique_hall"];
 const VENUE_LIFETIME_DAYS = 30;
+
+function openAdminActionModal({
+  title = 'Confirm action',
+  message = '',
+  eyebrow = 'ADMIN ACTION',
+  icon = '✓',
+  confirmLabel = 'Continue',
+  cancelLabel = 'Cancel',
+  showCancel = true,
+  danger = false,
+} = {}) {
+  const modal = document.getElementById('adminActionModal');
+  const titleEl = document.getElementById('adminActionTitle');
+  const messageEl = document.getElementById('adminActionMessage');
+  const eyebrowEl = document.getElementById('adminActionEyebrow');
+  const iconEl = document.getElementById('adminActionIcon');
+  const confirmEl = document.getElementById('adminActionConfirm');
+  const cancelEl = document.getElementById('adminActionCancel');
+  if (!modal || !titleEl || !messageEl || !confirmEl || !cancelEl) {
+    return Promise.resolve(true);
+  }
+
+  titleEl.textContent = title;
+  messageEl.textContent = message;
+  if (eyebrowEl) eyebrowEl.textContent = eyebrow;
+  if (iconEl) iconEl.textContent = icon;
+  confirmEl.textContent = confirmLabel;
+  cancelEl.textContent = cancelLabel;
+  cancelEl.hidden = !showCancel;
+  modal.classList.toggle('admin-action-danger', !!danger);
+  modal.classList.toggle('admin-action-success', !danger && !showCancel);
+  modal.classList.add('is-open');
+  modal.setAttribute('aria-hidden', 'false');
+
+  return new Promise((resolve) => {
+    const close = (result) => {
+      modal.classList.remove('is-open');
+      modal.setAttribute('aria-hidden', 'true');
+      confirmEl.removeEventListener('click', onConfirm);
+      cancelEl.removeEventListener('click', onCancel);
+      backdrop?.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKeydown);
+      resolve(result);
+    };
+    const onConfirm = () => close(true);
+    const onCancel = () => close(false);
+    const onBackdrop = () => { if (showCancel) close(false); };
+    const onKeydown = (e) => {
+      if (e.key === 'Escape' && showCancel) close(false);
+    };
+    const backdrop = modal.querySelector('[data-modal-close="true"]');
+    confirmEl.addEventListener('click', onConfirm);
+    cancelEl.addEventListener('click', onCancel);
+    backdrop?.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKeydown);
+    queueMicrotask(() => confirmEl.focus());
+  });
+}
+
+function showAdminNotice(title, message, opts = {}) {
+  return openAdminActionModal({
+    title,
+    message,
+    eyebrow: opts.eyebrow || 'ADMIN UPDATE',
+    icon: opts.icon || '✓',
+    confirmLabel: opts.confirmLabel || 'Done',
+    showCancel: false,
+    danger: !!opts.danger,
+  });
+}
+
+function showAdminConfirm(title, message, opts = {}) {
+  return openAdminActionModal({
+    title,
+    message,
+    eyebrow: opts.eyebrow || 'PLEASE CONFIRM',
+    icon: opts.icon || '!',
+    confirmLabel: opts.confirmLabel || 'Delete',
+    cancelLabel: opts.cancelLabel || 'Cancel',
+    showCancel: true,
+    danger: !!opts.danger,
+  });
+}
+
 const ADMIN_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 let adminIdleTimer = null;
 
@@ -685,17 +769,30 @@ function renderView(key) {
         try {
           const saved = await upsertBanquetRecord();
           if (pill) {
-          pill.textContent = saved?.mode === 'update' ? 'Operation Successful!' : 'Operation Successful!';
+            pill.textContent = saved?.mode === 'update' ? 'Updated successfully' : 'Saved successfully';
             pill.style.borderColor = 'rgba(52, 211, 153, 0.5)';
-          alert('Operation Successful');
           }
 
-          // After save/update: clear form for banquet-management
-          clearBanquetManagementForm();
+          // Paint the saved record into the decrypted cache immediately so the
+          // spreadsheet never waits for Firebase's next onValue tick.
+          const currentBanquets = peekCached('/banquet/unique_bank', {});
+          seedCached('/banquet/unique_bank', {
+            ...(currentBanquets && typeof currentBanquets === 'object' ? currentBanquets : {}),
+            [saved.key]: { ...(saved.record || {}), UID: saved.key },
+          });
 
-          // After user closes the popup (or taps OK), move to spreadsheet and refresh
+          await showAdminNotice(
+            saved?.mode === 'update' ? 'Banquet updated' : 'Banquet added',
+            saved?.mode === 'update'
+              ? 'The banquet details were updated successfully. The spreadsheet is being refreshed now.'
+              : 'The new banquet was added successfully. It is now available in the spreadsheet.',
+            { icon: '✓', eyebrow: 'BANQUET MANAGEMENT' }
+          );
+
+          clearBanquetManagementForm();
           setActive('banquet-spreadsheet');
           renderView('banquet-spreadsheet');
+          await loadBanquetSpreadsheetRows();
         } catch (e) {
           console.error(e);
           if (pill) {
@@ -767,20 +864,28 @@ function renderView(key) {
         try {
           const saved = await upsertHallRecord();
           if (pill) {
-            pill.textContent = 'Operation Successful!';
+            pill.textContent = saved?.mode === 'update' ? 'Updated successfully' : 'Saved successfully';
             pill.style.borderColor = 'rgba(52, 211, 153, 0.5)';
           }
 
-          clearHallManagementForm();
+          const currentHalls = peekCached('/hall/unique_hall', {});
+          seedCached('/hall/unique_hall', {
+            ...(currentHalls && typeof currentHalls === 'object' ? currentHalls : {}),
+            [saved.key]: { ...(saved.record || {}), UID: saved.key, hall_UID: saved.key },
+          });
 
-          setTimeout(() => {
-            // Save success popup + then clear form + navigate
-            alert('Operation Successful');
-            clearHallManagementForm();
-            setActive('hall-spreadsheet');
-            renderView('hall-spreadsheet');
-            loadHallSpreadsheetRows().catch((e) => console.error(e));
-          }, 0);
+          await showAdminNotice(
+            saved?.mode === 'update' ? 'Hall updated' : 'Hall added',
+            saved?.mode === 'update'
+              ? 'The hall details were updated successfully. The spreadsheet is being refreshed now.'
+              : 'The new hall was added successfully. It is now available in the spreadsheet.',
+            { icon: '✓', eyebrow: 'HALL MANAGEMENT' }
+          );
+
+          clearHallManagementForm();
+          setActive('hall-spreadsheet');
+          renderView('hall-spreadsheet');
+          await loadHallSpreadsheetRows();
 
         } catch (e) {
           console.error(e);
@@ -1565,7 +1670,7 @@ async function upsertBanquetRecord() {
   invalidateCached('banquet/unique_bank');
 
   // Return mode takay UI ko update ki success ka pata chale[cite: 3]
-  return { mode: exists ? 'update' : 'create', path: recordPath, key: recordKey };
+  return { mode: exists ? 'update' : 'create', path: recordPath, key: recordKey, record: payloadToSave };
 }
 
 async function loadBanquetForEditingByPath(dataPath) {
@@ -1579,7 +1684,7 @@ async function loadBanquetForEditingByPath(dataPath) {
 
   const snap = await get(ref(database, dataPath));
   if (!snap.exists()) {
-    alert("Banquet record not found.");
+    showAdminNotice("Banquet not found", "This banquet record is no longer available in the database.", { icon: "!", danger: true, eyebrow: "BANQUET MANAGEMENT" });
     return;
   }
 
@@ -1942,7 +2047,7 @@ async function loadHallForEditingByPath(dataPath) {
 
   const snap = await get(ref(database, dataPath));
   if (!snap.exists()) {
-    alert("Hall record not found.");
+    showAdminNotice("Hall not found", "This hall record is no longer available in the database.", { icon: "!", danger: true, eyebrow: "HALL MANAGEMENT" });
     return;
   }
 
@@ -2365,7 +2470,7 @@ async function upsertHallRecord() {
   await set(ref(database, recordPath), await encryptDeep(payloadToSave));
   invalidateCached('hall/unique_hall');
 
-  return { mode: exists ? 'update' : 'create', path: recordPath, key: recordKey };
+  return { mode: exists ? 'update' : 'create', path: recordPath, key: recordKey, record: payloadToSave };
 }
 
 async function loadHallSpreadsheetRows() {
@@ -2501,13 +2606,17 @@ async function loadHallSpreadsheetRows() {
       const deleteBtn = trEl.querySelector(`[data-delete-path="${row.deletePath}"]`);
       if (deleteBtn) {
         deleteBtn.addEventListener('click', async () => {
-          const okDel = window.confirm(`Delete hall UID ${row.UID}?`);
+          const okDel = await showAdminConfirm('Delete hall?', `UID ${row.UID} will be permanently removed from the hall records. This action cannot be undone.`, { icon: '!', eyebrow: 'HALL SPREADSHEET', confirmLabel: 'Delete', danger: true });
           if (!okDel) return;
           const { database } = await import('./firebaseconfig.js');
           const { ref, remove } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
           await remove(ref(database, row.deletePath));
           await deletePortfolioViewCounter({ portfolioType: 'hall', uid: row.UID });
+          const nextHalls = { ...(peekCached('/hall/unique_hall', {}) || {}) };
+          delete nextHalls[row.deletePath.split('/').pop()];
+          seedCached('/hall/unique_hall', nextHalls);
           await loadHallSpreadsheetRows();
+          await showAdminNotice('Hall deleted', `UID ${row.UID} was removed successfully.`, { eyebrow: 'HALL SPREADSHEET' });
         });
       }
 
@@ -2658,7 +2767,7 @@ async function loadBanquetSpreadsheetRows() {
             initBanquetFileBrowseUx();
           } catch (e) {
             console.error(e);
-            alert("Failed to load banquet for editing.");
+            showAdminNotice("Unable to open banquet", "The selected banquet could not be loaded for editing.", { icon: "!", danger: true, eyebrow: "BANQUET SPREADSHEET" });
           }
         });
       }
@@ -2666,7 +2775,7 @@ async function loadBanquetSpreadsheetRows() {
       const deleteBtn = trEl.querySelector(`[data-delete-path="${row.deletePath}"]`);
       if (deleteBtn) {
         deleteBtn.addEventListener("click", async () => {
-          const okDel = window.confirm(`Delete banquet UID ${row.UID}?`);
+          const okDel = await showAdminConfirm('Delete banquet?', `UID ${row.UID} will be permanently removed from the banquet records. This action cannot be undone.`, { icon: '!', eyebrow: 'BANQUET SPREADSHEET', confirmLabel: 'Delete', danger: true });
           if (!okDel) return;
           try {
             const { database } = await import("./firebaseconfig.js");
@@ -2675,10 +2784,14 @@ async function loadBanquetSpreadsheetRows() {
             );
             await remove(ref(database, row.deletePath));
             await deletePortfolioViewCounter({ portfolioType: 'banquet', uid: row.UID });
+            const nextBanquets = { ...(peekCached('/banquet/unique_bank', {}) || {}) };
+            delete nextBanquets[row.deletePath.split('/').pop()];
+            seedCached('/banquet/unique_bank', nextBanquets);
             await loadBanquetSpreadsheetRows();
+            await showAdminNotice('Banquet deleted', `UID ${row.UID} was removed successfully.`, { eyebrow: 'BANQUET SPREADSHEET' });
           } catch (e) {
             console.error(e);
-            alert("Delete failed.");
+            await showAdminNotice('Delete failed', 'The record could not be deleted. Please try again.', { icon: '!', danger: true, eyebrow: 'ACTION FAILED' });
           }
         });
       }

@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="./admin_dashboard_login_ui.css" />
   </head>
   <body>
+    <script src="./client_protection.js"></script>
     <div id="appLoadingOverlay" class="app-loading-overlay" aria-hidden="true">
       <div class="app-loading-card">
         <div class="app-loading-orbit"><span></span><span></span><span></span></div>
@@ -49,6 +50,20 @@
 
           <p id="message" class="admin-login-message" role="status"></p>
         </form>
+      </section>
+    </div>
+
+    <div id="adminActionModal" class="admin-action-modal" aria-hidden="true">
+      <div class="admin-action-backdrop" data-modal-close="true"></div>
+      <section class="admin-action-card" role="dialog" aria-modal="true" aria-labelledby="adminActionTitle">
+        <div class="admin-action-icon" id="adminActionIcon">✓</div>
+        <div class="admin-action-eyebrow" id="adminActionEyebrow">ADMIN ACTION</div>
+        <h2 id="adminActionTitle">Operation Successful</h2>
+        <p id="adminActionMessage">Your changes have been saved.</p>
+        <div class="admin-action-actions">
+          <button id="adminActionCancel" class="a-btn admin-action-secondary" type="button">Cancel</button>
+          <button id="adminActionConfirm" class="a-btn admin-action-primary" type="button">Continue</button>
+        </div>
       </section>
     </div>
 

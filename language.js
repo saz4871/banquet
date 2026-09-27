@@ -2,7 +2,6 @@
   'use strict';
 
   const STORAGE_KEY = 'eventVaultLanguage';
-  const POPUP_SEEN_KEY = 'eventVaultLanguagePopupSeen';
   const LANG = { EN: 'en', UR: 'ur' };
 
   // Only UI copy is translated. User/vendor venue names, locations, URLs and database values remain untouched.
@@ -297,7 +296,15 @@
     'Updated': 'اپ ڈیٹ ہو گیا',
     'Saved': 'محفوظ ہو گیا',
     'Deleted': 'حذف ہو گیا',
-    'Language': 'زبان'
+    'Language': 'زبان',
+
+    // Venue / banquet names are translated in Urdu without changing their
+    // underlying database values, UIDs, prices, dates or other numeric data.
+    'Alpha Banquet': 'الفا بینکوئٹ',
+    'North Marriage Garden': 'نارتھ میرج گارڈن',
+    'Caspia': 'کاسپیا',
+    'Taj Mehal Hall': 'تاج محل ہال',
+    'Grand Hall': 'گرینڈ ہال'
   };
 
   const R = Object.fromEntries(Object.entries(T).map(([en, ur]) => [ur, en]));
@@ -386,7 +393,6 @@
   }
 
   function popup() {
-    if (localStorage.getItem(POPUP_SEEN_KEY) === '1') return;
     if (document.getElementById('evLanguageModal')) return;
     const modal = document.createElement('div');
     modal.id = 'evLanguageModal';
@@ -408,7 +414,6 @@
     modal.querySelectorAll('[data-lang]').forEach(btn => btn.addEventListener('click', () => {
       const lang = btn.dataset.lang === 'ur' ? LANG.UR : LANG.EN;
       localStorage.setItem(STORAGE_KEY, lang);
-      localStorage.setItem(POPUP_SEEN_KEY, '1');
       modal.remove();
       translatePage();
       window.dispatchEvent(new CustomEvent('eventVaultLanguageChanged', { detail: { lang } }));
@@ -416,10 +421,18 @@
     translateNode(modal);
   }
 
+  function shouldShowLanguagePopup() {
+    const path = (window.location.pathname || '').toLowerCase();
+    const page = path.split('/').pop() || 'index.html';
+    // Ask again on the main/login entry points after every refresh.
+    // Portfolio and internal pages reuse the selected language silently.
+    return ['index.html', 'home.html', 'vendor_panel.html', 'admin_dashboard.html'].includes(page);
+  }
+
   function init() {
     createStyles();
     translatePage();
-    popup();
+    if (shouldShowLanguagePopup()) popup();
     const observer = new MutationObserver(mutations => {
       if (document.getElementById('evLanguageModal')) return;
       for (const m of mutations) {

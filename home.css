@@ -196,3 +196,64 @@ button{color:inherit}
   .results-section .grid .venue-tile__content{padding:8px 7px 7px;}
   .results-section .grid .venue-tile__content h3{font-size:11px;}
 }
+
+/* Slightly larger card detail action */
+.results-section .grid .venue-tile__action{font-size:10px!important}
+@media(max-width:760px){.results-section .grid .venue-tile__action{font-size:6.5px!important}}
+
+/* ===== Final typography polish: larger, clearer premium card text ===== */
+.results-section .grid .venue-tile__type{
+  font-size:8.5px;
+  font-weight:900;
+  letter-spacing:.13em;
+}
+.results-section .grid .venue-tile__eyebrow{
+  font-size:8.5px;
+  font-weight:900;
+  letter-spacing:.22em;
+}
+.results-section .grid .venue-tile__content h3{
+  font-size:23px;
+  font-weight:900;
+  letter-spacing:-.045em;
+  margin:8px 0 10px;
+}
+.results-section .grid .venue-tile__location{
+  font-size:10.5px;
+  font-weight:600;
+  line-height:1.45;
+}
+.results-section .grid .venue-tile__meta small{
+  font-size:7.5px;
+  font-weight:900;
+  letter-spacing:.14em;
+}
+.results-section .grid .venue-tile__meta b{
+  font-size:13px;
+  font-weight:900;
+}
+.results-section .grid .venue-tile__meta em{
+  font-size:9px;
+  font-weight:700;
+}
+.results-section .grid .venue-tile__action{
+  font-size:10.5px!important;
+  font-weight:900;
+  letter-spacing:.07em;
+}
+@media(max-width:760px){
+  .results-section .grid .venue-tile__type{font-size:6.5px;padding:5px 6px;}
+  .results-section .grid .venue-tile__eyebrow{font-size:6.5px;letter-spacing:.15em;}
+  .results-section .grid .venue-tile__content h3{font-size:15px;line-height:1.08;margin:5px 0 7px;}
+  .results-section .grid .venue-tile__location{font-size:8px;line-height:1.35;min-height:27px;}
+  .results-section .grid .venue-tile__meta small{font-size:5.5px;letter-spacing:.08em;}
+  .results-section .grid .venue-tile__meta b{font-size:8.5px;}
+  .results-section .grid .venue-tile__meta em{font-size:6px;}
+  .results-section .grid .venue-tile__action{font-size:8px!important;letter-spacing:.04em;}
+}
+@media(max-width:390px){
+  .results-section .grid .venue-tile__content h3{font-size:13.5px;}
+  .results-section .grid .venue-tile__location{font-size:7.5px;}
+  .results-section .grid .venue-tile__meta b{font-size:8px;}
+  .results-section .grid .venue-tile__action{font-size:7.5px!important;}
+}

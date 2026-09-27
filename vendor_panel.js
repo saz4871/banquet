@@ -1,6 +1,8 @@
 import { database } from "./firebaseconfig.js";
-import { decryptDeep, encryptDeep } from "./encryption/encryption.js";
-import { ref, get } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { decryptDeep, encryptDeep, stablePathKey } from "./encryption/encryption.js";
+import { ref, get, onValue } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
+import { getCached, hasCached, subscribeCached, invalidateCached, seedCached, peekCached } from './data_cache.js';
+import { getPortfolioViewCount, subscribePortfolioViewCount } from './view_tracker.js';
 
 const db = database;
 
@@ -17,8 +19,53 @@ const verifyBtn = document.getElementById("verifyBtn");
 const pageTitle = document.getElementById("pageTitle");
 const statusPill = document.getElementById("statusPill");
 const viewContainer = document.getElementById("viewContainer");
+let __vendorViewUnsubs = [];
+let __vendorViewCountState = new Map();
+function clearVendorViewListeners() {
+  __vendorViewUnsubs.forEach((unsub) => { try { unsub?.(); } catch (_) {} });
+  __vendorViewUnsubs = [];
+  __vendorViewCountState = new Map();
+}
+function updateVendorViewsCard() {
+  const total = Array.from(__vendorViewCountState.values()).reduce((sum, value) => sum + (Number(value) || 0), 0);
+  const el = document.getElementById('vendorViewsCount');
+  if (el) el.textContent = String(total);
+}
+async function subscribeVendorViewCounters(results) {
+  clearVendorViewListeners();
+  const sourceType = String(window.__vendor_source || '').toLowerCase() === 'hall' ? 'hall' : 'banquet';
+  for (let index = 0; index < results.length; index += 1) {
+    const r = results[index];
+    const uid = r?.hall_UID ?? r?.UID ?? r?.uid;
+    if (!uid) continue;
+    const fallback = Number(r?.views ?? r?.Views ?? 0) || 0;
+    __vendorViewCountState.set(`${sourceType}:${uid}`, fallback);
+    const unsub = await subscribePortfolioViewCount({
+      portfolioType: sourceType,
+      uid,
+      fallback,
+      onChange: (value) => {
+        __vendorViewCountState.set(`${sourceType}:${uid}`, Number(value) || 0);
+        updateVendorViewsCard();
+      }
+    });
+    if (typeof unsub === 'function') __vendorViewUnsubs.push(unsub);
+  }
+  updateVendorViewsCard();
+}
 
 const navButtons = Array.from(document.querySelectorAll(".nav__item[data-view]"));
+const appLoadingOverlay = document.getElementById('appLoadingOverlay');
+function setAppLoading(show, text = 'Preparing your workspace and syncing the latest data…') {
+  if (!appLoadingOverlay) return;
+  const msg = appLoadingOverlay.querySelector('.app-loading-text');
+  if (msg) msg.textContent = text;
+  appLoadingOverlay.classList.toggle('is-visible', !!show);
+  appLoadingOverlay.setAttribute('aria-hidden', show ? 'false' : 'true');
+}
+
+
+void Promise.all([getCached('/banquet/unique_bank'), getCached('/hall/unique_hall'), getCached('/user/unique_user')]).catch(e => console.warn('[Vendor cache warm]', e));
 
 function setOverlayHidden(hidden) {
   overlay.setAttribute("aria-hidden", hidden ? "true" : "false");
@@ -59,11 +106,15 @@ function setActiveView(viewKey) {
 }
 
 function renderView(viewKey) {
+  clearVendorViewListeners();
   try { window.__vendor_last_view = viewKey; } catch (e) {}
   setActiveView(viewKey);
 
-  // Late switching fix: show loading indicator immediately on view switch
-  setStatus('Loading...');
+  // Cached views switch instantly; only the first cold load shows Loading.
+  const warm = (viewKey === 'vendor-spreadsheet' && hasCached('/user/unique_user')) ||
+               (viewKey === 'vendor-rate' && (hasCached('/banquet/unique_bank') || hasCached('/hall/unique_hall'))) ||
+               (viewKey === 'vendor-management' && (hasCached('/banquet/unique_bank') || hasCached('/hall/unique_hall')));
+  setStatus(warm ? 'Live' : 'Loading...');
   viewContainer.innerHTML = '';
 
   // Login ke waqt set kiya gaya name global variable se access hoga
@@ -93,12 +144,7 @@ function renderView(viewKey) {
 
         // --- Live Pending Counter (from /user/unique_user by venueID + status) ---
         // PERFORMANCE: Avoid blocking UI. We fetch pending in background.
-        let vendorAssignedVenueUid = null;
-
-        try {
-          vendorAssignedVenueUid = localStorage.getItem("vendorAssignedVenueUid");
-        } catch (e) {}
-        if (!vendorAssignedVenueUid) vendorAssignedVenueUid = window.__vendor_id;
+        const vendorAssignedVenueUid = String(window.__vendor_id ?? '').trim();
 
         // Ensure only 1 listener at a time
         if (window.__vendorPendingUnsub && typeof window.__vendorPendingUnsub === "function") {
@@ -274,33 +320,25 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
           const location = collectLocation(item);
           const price = computePrice(item).replace('Rs. ', '').trim();
           const capacity = String(item.capacity || item.Capacity || item.people_capacity || item.peopleCapacity || item.people || item.capacityText || '').trim();
-          const uid = item.UID || item.uid || '';
-
-          // NOTE: escapeHtml removed earlier for performance; current UI expects raw text.
-          // If you need XSS protection, re-introduce a minimal escape function.
+          const uid = item.UID || item.uid || item.hall_UID || '';
+          const typeLabel = (item.hall_UID || item.hallname || item.hallName) ? 'HALL' : 'BANQUET';
           return `
-            <div class="card" role="button" tabindex="0" aria-label="Open banquet ${title}" data-banquet-uid="${uid}">
-              <div class="img-container">
-                ${cover ? `<img src="${cover}" alt="cover" />` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8">No Image</div>`}
-                <div class="luxury-badge">Verified Luxury</div>
+            <div class="vendor-venue-card" role="button" tabindex="0" aria-label="Open ${typeLabel.toLowerCase()} ${title}" data-banquet-uid="${uid}">
+              <div class="vendor-venue-card__media">
+                ${cover ? `<img src="${cover}" alt="${typeLabel} cover" loading="eager" />` : `<div class="vendor-venue-card__empty"><i class="fa-regular fa-image"></i><span>No Image</span></div>`}
+                <div class="vendor-venue-card__shade"></div>
+                <div class="vendor-venue-card__badge"><i class="fa-solid fa-crown"></i> ${typeLabel}</div>
+                <div class="vendor-venue-card__uid">UID ${uid || '—'}</div>
               </div>
-              <div class="card-body">
-                <div class="card-title">${title}</div>
-                <div class="card-tag">
-                  <b>${tag}</b>
-                  <div class="card-meta">
-                    <span>Location:</span>
-                    ${location}
-                  </div>
+              <div class="vendor-venue-card__body">
+                <div class="vendor-venue-card__eyebrow">YOUR ASSIGNED VENUE</div>
+                <div class="vendor-venue-card__title">${title}</div>
+                <div class="vendor-venue-card__location"><i class="fa-solid fa-location-dot"></i><span>${location || 'Location not added'}</span></div>
+                <div class="vendor-venue-card__meta">
+                  <div><small>RATE</small><strong>Rs. ${price || '0'}</strong></div>
+                  <div><small>CAPACITY</small><strong>${capacity || '—'}</strong><em>people</em></div>
                 </div>
-              </div>
-              <div class="card-footer">
-                <div class="price">
-                  Standart Rate:
-                  <b>${price}</b>
-                  <div class="capacity">People Capacity: <b>${capacity}</b></div>
-                </div>
-                <div class="arrow"><i class="fa-solid fa-arrow-right"></i></div>
+                <div class="vendor-venue-card__cta"><span>Open portfolio</span><i class="fa-solid fa-arrow-up-right-from-square"></i></div>
               </div>
             </div>
           `;
@@ -312,9 +350,9 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
 
         // Banquet
-        const banquetSnap = await get(ref(db, "/banquet/unique_bank"));
-        if (banquetSnap.exists()) {
-          const data = await decryptDeep(banquetSnap.val() || {});
+        const banquetData = await getCached('/banquet/unique_bank');
+        if (banquetData && Object.keys(banquetData).length) {
+          const data = banquetData;
           for (const [id, record] of Object.entries(data)) {
             if (!record) continue;
             const isMatch = String(record.UID ?? id) === String(vendorId);
@@ -323,9 +361,9 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         }
 
         // Hall
-        const hallSnap = await get(ref(db, "/hall/unique_hall"));
-        if (hallSnap.exists()) {
-          const data = await decryptDeep(hallSnap.val() || {});
+        const hallData = await getCached('/hall/unique_hall');
+        if (hallData && Object.keys(hallData).length) {
+          const data = hallData;
           for (const [id, record] of Object.entries(data)) {
             if (!record) continue;
             const isMatch = String(record.hall_UID ?? record.UID ?? id) === String(vendorId);
@@ -343,6 +381,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
 
         let minDays = Infinity;
+        let minExpireDate = '';
         let viewsTotal = 0;
 
         // Track spreadsheet-style status counts too (if /user/unique_user has status)
@@ -356,10 +395,18 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
 
 
-        for (const r of results) {
+        const viewCounts = await Promise.all(results.map((r) => {
+          const uid = r?.hall_UID ?? r?.UID ?? r?.uid;
+          const type = String(window.__vendor_source || '').toLowerCase() === 'hall' ? 'hall' : 'banquet';
+          return getPortfolioViewCount({ portfolioType: type, uid, fallback: r?.views ?? r?.Views ?? 0 });
+        }));
 
-          const rawViews = r?.views;
-          const viewsNum = rawViews !== undefined ? Number(rawViews) : 0;
+        // Keep the Views card live; no vendor-panel refresh is required after a qualified portfolio visit.
+        void subscribeVendorViewCounters(results);
+
+        for (let index = 0; index < results.length; index += 1) {
+          const r = results[index];
+          const viewsNum = Number(viewCounts[index]);
           if (Number.isFinite(viewsNum)) viewsTotal += viewsNum;
 
           // 1) Spreadsheet-style approval status (Approve/Deny) for pending card count alignment
@@ -377,6 +424,8 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
           if (Number.isFinite(countdownDays)) {
             minDays = Math.min(minDays, countdownDays);
+            const rawExpire = String(r?.expiredate ?? r?.expireDate ?? '').trim();
+            if (rawExpire && (!minExpireDate || rawExpire < minExpireDate)) minExpireDate = rawExpire.slice(0, 10);
             if (countdownDays < 0) approved++;
             else pending++;
             continue;
@@ -388,6 +437,8 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
           const diffMs = exp.getTime() - now.getTime();
           const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
           minDays = Math.min(minDays, diffDays);
+          const rawExpire = String(r?.expiredate ?? r?.expireDate ?? '').trim();
+          if (rawExpire && (!minExpireDate || rawExpire < minExpireDate)) minExpireDate = rawExpire.slice(0, 10);
 
           if (diffDays < 0) approved++;
           else pending++;
@@ -418,11 +469,12 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
 
 
-        const quickCardsHtml = (pendingCount, viewsCount, approvedCount, minDaysLeft) => {
+        const quickCardsHtml = (pendingCount, viewsCount, approvedCount, minDaysLeft, expiryDate) => {
           const pending = String(pendingCount ?? 0);
           const views = String(viewsCount ?? 0);
           const approved = String(approvedCount ?? 0);
           const expiryText = Number.isFinite(minDaysLeft) ? String(minDaysLeft) : '0';
+          const expiryDateText = String(minExpireDate || '—');
 
           return `
             <div class="quick-cards" style="max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0 16px;">
@@ -432,7 +484,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
               </div>
               <div class="cardish" style="padding:14px 16px;background:rgba(0,0,0,0.25);border:1px solid rgba(251,113,133,0.25);border-radius:16px;">
                 <div style="font-weight:900;color:rgba(229,231,235,0.95);">Views</div>
-                <div style="font-size:22px;font-weight:1000;color:rgba(96,165,250,0.95);margin-top:6px;">${views}</div>
+                <div id="vendorViewsCount" style="font-size:22px;font-weight:1000;color:rgba(96,165,250,0.95);margin-top:6px;">${views}</div>
               </div>
               <div class="cardish" style="padding:14px 16px;background:rgba(0,0,0,0.25);border:1px solid rgba(251,113,133,0.25);border-radius:16px;">
                 <div style="font-weight:900;color:rgba(229,231,235,0.95);">Approved</div>
@@ -440,14 +492,13 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
               </div>
               <div class="cardish" style="padding:14px 16px;background:rgba(0,0,0,0.25);border:1px solid rgba(251,113,133,0.25);border-radius:16px;">
                 <div style="font-weight:900;color:rgba(229,231,235,0.95);">Days Left to Expire</div>
-                <div style="font-size: 22px; font-weight: 1000; margin-top: 6px; 
+                <div id="vendorExpiryDays" style="font-size: 22px; font-weight: 1000; margin-top: 6px; 
     color: ${parseInt(expiryText) < 0 ? 'rgba(239,68,68,0.95)' : '#22c55e'};">
-    
     ${parseInt(expiryText) < 0 
         ? `Expired ${Math.abs(expiryText)} days ago` 
         : `${expiryText} Days Remaining`}
-        
 </div>
+<div id="vendorExpiryDate" style="margin-top:5px;font-size:10px;font-weight:800;color:rgba(229,231,235,.58);">Expires: ${expiryDateText}</div>
               </div>
             </div>
           `;
@@ -456,7 +507,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         // Vendor Assigned Venue UID (banquet/hall ka) show on top of cards
         const assignedVenueUid = String(vendorAssignedVenueUid ?? vendorId ?? '');
         viewContainer.innerHTML = `
-          ${quickCardsHtml(finalPending, viewsTotal, finalApproved, minDays)}
+          ${quickCardsHtml(finalPending, viewsTotal, finalApproved, minDays, minExpireDate)}
           <div style="max-width:1100px;margin:10px auto 0;padding:0 16px;">
             <div style="padding:10px 14px;background:rgba(0,0,0,0.18);border:1px solid rgba(251,113,133,0.25);border-radius:14px;">
               <div style="font-size:16px;font-weight:1000;color:rgba(255,230,240,0.98);margin-top:4px;">Assigned Venue UID: ${assignedVenueUid}</div>
@@ -478,11 +529,13 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         const onCardActivate = (cardEl) => {
           const uid = cardEl?.dataset?.banquetUid;
           if (!uid) return;
+          const source = String(window.__vendor_source || 'banquet').toLowerCase();
           try {
-            localStorage.setItem('selectedPortfolioType', 'banquet');
+            localStorage.setItem('selectedPortfolioType', source === 'hall' ? 'hall' : 'banquet');
           } catch (e) {}
           try {
-            localStorage.setItem('selectedBanquetUid', uid);
+            if (source === 'hall') localStorage.setItem('selectedHallUid', uid);
+            else localStorage.setItem('selectedBanquetUid', uid);
           } catch (e) {}
           window.location.href = 'portfolio.html';
         };
@@ -495,21 +548,14 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         });
       } catch (err) {
         console.error("Vendor cards load error:", err);
-        // fallback keep zeros
         setStatus('Ready');
+        setAppLoading(false);
       }
 
       // ===== Bottom Calendar (same UI/working as portfolio) =====
       // Inject calendar only inside vendor-management view.
       try {
-        const vendorAssignedVenueUid = (() => {
-          try {
-            const x = localStorage.getItem('vendorAssignedVenueUid');
-            return x ? String(x) : String(window.__vendor_id ?? '');
-          } catch (e) {
-            return String(window.__vendor_id ?? '');
-          }
-        })();
+        const vendorAssignedVenueUid = String(window.__vendor_id ?? '').trim();
 
         const checkboxValue = (v) => {
           if (v === true || v === 1) return true;
@@ -532,10 +578,15 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
           let venue = null;
           for (const path of paths) {
-            const snap = await get(ref(db, path));
-            if (snap.exists()) {
-              venue = await decryptDeep(snap.val());
-              break;
+            const dataPath = path.startsWith('/hall/') ? '/hall/unique_hall' : '/banquet/unique_bank';
+            const all = await getCached(dataPath);
+            const key = path.split('/').pop();
+            const candidate = all?.[key];
+            if (candidate) { venue = candidate; break; }
+            // Some legacy records use a different encrypted child key, so fall back to UID scan.
+            if (all) {
+              const found = Object.values(all).find(r => String(r?.UID ?? r?.hall_UID ?? '') === String(venueUid));
+              if (found) { venue = found; break; }
             }
           }
 
@@ -765,8 +816,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
             if (calendarDataCache.users && (Date.now() - calendarDataCache.usersAt) < CALENDAR_CACHE_MS) {
               all = calendarDataCache.users;
             } else {
-              const snap = await get(ref(db, '/user/unique_user'));
-              all = snap.exists() ? (await decryptDeep(snap.val() || {})) : {};
+              all = await getCached('/user/unique_user');
               calendarDataCache.users = all;
               calendarDataCache.usersAt = Date.now();
             }
@@ -809,8 +859,8 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
             if (calendarDataCache.red && (Date.now() - calendarDataCache.redAt) < CALENDAR_CACHE_MS) {
               rmData = calendarDataCache.red;
             } else {
-              const rmSnap = await get(ref(db, `/redmarkdates/unique_redmark/${vendorAssignedVenueUid}`));
-              rmData = rmSnap.exists() ? (await decryptDeep(rmSnap.val() || {})) : {};
+              const redPath = `/redmarkdates/unique_redmark/${await stablePathKey(vendorAssignedVenueUid, 'redmark-owner')}`;
+              rmData = await getCached(redPath);
               calendarDataCache.red = rmData;
               calendarDataCache.redAt = Date.now();
             }
@@ -889,10 +939,10 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
       }
 
       const isAlreadyRed = redMarkedIsoSet.has(isoStr);
-      const basePath = `/redmarkdates/unique_redmark/${vendorAssignedVenueUid}`;
+      const basePath = `/redmarkdates/unique_redmark/${await stablePathKey(vendorAssignedVenueUid, "redmark-owner")}`;
       const [yyyy, mm, dd] = isoStr.split('-');
       const reddateVal = `${dd}/${mm}/${yyyy}|${calendarType}`;
-      const childKey = `${calendarType}_${isoStr}`;
+      const childKey = await stablePathKey(`${calendarType}|${isoStr}`, "redmark-child");
       const nodePath = `${basePath}/${childKey}`;
 
       // Premium inline loading state: the spinner lives inside the exact day
@@ -976,24 +1026,27 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
           await renderCalendarFor(v).catch(() => {});
 
-          // Auto refresh marks (portfolio ki tarah): 3 seconds me calendar re-render
-          // so red/yellow changes real-time dikhay dein without full page refresh.
+          // Event-driven live sync: Firebase pushes only when booking/status data
+          // actually changes. No polling loop and no repeated full calendar load.
           try {
-            if (window.__vendorCalendarAutoRefreshTimer) {
-              clearInterval(window.__vendorCalendarAutoRefreshTimer);
-              window.__vendorCalendarAutoRefreshTimer = null;
+            if (Array.isArray(window.__vendorCalendarLiveUnsubs)) {
+              for (const unsub of window.__vendorCalendarLiveUnsubs) {
+                try { unsub?.(); } catch (_) {}
+              }
             }
-          } catch (e) {}
+            window.__vendorCalendarLiveUnsubs = [];
 
-          window.__vendorCalendarAutoRefreshTimer = setInterval(() => {
-            try {
+            const refreshVisibleCalendar = () => {
               if (window.__vendorCalendarUpdating) return;
               const currentTime = localStorage.getItem('eventTime') || v || 'Morning';
-              // important: re-render current selected calendar block only
-              // to avoid losing event listeners/classes on other blocks.
               renderCalendarFor(currentTime).catch(() => {});
-            } catch (e) {}
-          }, 3000);
+            };
+            window.__vendorCalendarLiveUnsubs.push(subscribeCached('/user/unique_user', refreshVisibleCalendar));
+            const redPath = `/redmarkdates/unique_redmark/${await stablePathKey(vendorAssignedVenueUid, 'redmark-owner')}`;
+            window.__vendorCalendarLiveUnsubs.push(subscribeCached(redPath, refreshVisibleCalendar));
+          } catch (e) {
+            console.warn('[vendor calendar live sync] setup failed', e);
+          }
         };
 
 
@@ -1054,455 +1107,302 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
       // Initial async work complete: cards grid + calendar injected.
       setStatus('Ready');
+      setAppLoading(false);
     })();
 
   } else if (viewKey === "vendor-spreadsheet") {
     pageTitle.textContent = `Welcome ${name}`;
 
-    const vendorId = window.__vendor_id;
+    // SECURITY/SCOPE: the spreadsheet is always scoped to the authenticated
+    // vendor venue UID established by verifyVendor(). Never trust a stale
+    // localStorage venue id as the source of truth for this view.
+    const vendorId = String(window.__vendor_id ?? '').trim();
+    const vendorSource = String(window.__vendor_source ?? '').trim().toLowerCase();
+
+    if (!vendorId) {
+      viewContainer.innerHTML = `
+        <div class="vendor-empty-state">
+          <i class="fa-solid fa-shield-halved"></i>
+          <strong>Vendor session not available</strong>
+          <span>Please log in again to load your assigned venue records.</span>
+        </div>`;
+      setStatus('Locked');
+      return;
+    }
 
     viewContainer.innerHTML = `
-      <div class="panel__inner">
-        <div class="cardish" style="padding:18px;">
-          <h2 style="margin:0 0 10px;">Vendor Spreadsheet</h2>
-
-          <div style="display:flex;align-items:center;gap:12px;margin:0 0 14px;flex-wrap:wrap;">
-            <label style="font-weight:800;color:rgba(229,231,235,0.85);">Status Filter:</label>
-            <select id="vendorSpreadsheetStatusFilter" style="padding:10px 12px;border-radius:14px;border:1px solid rgba(251,113,133,0.35);background:rgba(0,0,0,0.18);color:rgba(255,255,255,0.95);font-weight:800;">
-              <option value="all" selected>All</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="deny">Deny</option>
-            </select>
-
-            <label style="font-weight:800;color:rgba(229,231,235,0.85);">Search:</label>
-            <input
-              id="vendorSpreadsheetSearch"
-              type="text"
-              placeholder="Name / Contact"
-              style="padding:10px 12px;border-radius:14px;border:1px solid rgba(251,113,133,0.35);background:rgba(0,0,0,0.18);color:rgba(255,255,255,0.95);font-weight:800;min-width:240px;outline:none;"
-            />
-
-
-            <div style="display:flex;align-items:center;gap:10px;">
-              <button type="button" id="vendorSpreadsheetMonthPrev" class="a-btn" style="padding:8px 10px;" aria-label="Previous month"><</button>
-              <div id="vendorSpreadsheetMonthYearLabel" style="min-width:110px;text-align:center;font-weight:900;color:rgba(229,231,235,0.95);padding:8px 10px;border:1px solid rgba(251,113,133,0.35);background:rgba(0,0,0,0.18);border-radius:14px;">
-                --
-              </div>
-              <button type="button" id="vendorSpreadsheetMonthNext" class="a-btn" style="padding:8px 10px;" aria-label="Next month">></button>
-            </div>
+      <section class="vendor-spreadsheet-shell">
+        <div class="vendor-spreadsheet-head">
+          <div>
+            <div class="vendor-eyebrow"><i class="fa-solid fa-table-columns"></i> PRIVATE VENDOR RECORDS</div>
+            <h2>My Booking Spreadsheet</h2>
+            <p>Only requests for your assigned ${vendorSource || 'venue'} are shown here.</p>
           </div>
-
-          <div style="overflow-x:auto;padding-bottom:10px;">
-            <table id="vendorRequestsTable" style="width:100%;border-collapse:collapse;text-align:left;color:rgba(255,230,240,0.98);white-space:nowrap;">
-              <thead>
-                <tr style="border-bottom:1px solid rgba(251,113,133,0.25);">
-                  <th style="padding:10px;">UID</th>
-                  <th style="padding:10px;">Name</th>
-                  <th style="padding:10px;">Contact</th>
-                  <th style="padding:10px;">Event Type</th>
-                  <th style="padding:10px;">Target Date</th>
-                  <th style="padding:10px;">Event Time</th>
-                  <th style="padding:10px;">Requested Date</th>
-                  <th style="padding:10px;">Status</th>
-                  <th style="padding:10px;">Action</th>
-                </tr>
-              </thead>
-              <tbody id="vendorRequestsTbody">
-                <tr>
-                  <td colspan="9" style="padding:14px;color:rgba(229,231,235,0.7);font-weight:800;">
-                    Loading rows...
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="vendor-scope-badge">
+            <span>Assigned venue</span>
+            <b>${vendorId}</b>
           </div>
         </div>
-      </div>
+
+        <div class="vendor-spreadsheet-toolbar">
+          <label class="vendor-filter">
+            <span>Status</span>
+            <select id="vendorSpreadsheetStatusFilter">
+              <option value="all" selected>All records</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="deny">Denied</option>
+            </select>
+          </label>
+          <label class="vendor-filter vendor-filter--search">
+            <span>Search</span>
+            <div class="vendor-search-input">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input id="vendorSpreadsheetSearch" type="search" placeholder="Client, contact or user ID" autocomplete="off" />
+            </div>
+          </label>
+          <div class="vendor-month-control">
+            <span>Requested month</span>
+            <div class="vendor-month-buttons">
+              <button type="button" id="vendorSpreadsheetMonthPrev" aria-label="Previous month"><i class="fa-solid fa-chevron-left"></i></button>
+              <div id="vendorSpreadsheetMonthYearLabel">--</div>
+              <button type="button" id="vendorSpreadsheetMonthNext" aria-label="Next month"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="vendor-table-wrap">
+          <table id="vendorRequestsTable" class="vendor-record-table">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Contact</th>
+                <th>Event</th>
+                <th>Target date</th>
+                <th>Time</th>
+                <th>Requested</th>
+                <th>Status</th>
+                <th class="vendor-action-col">Action</th>
+              </tr>
+            </thead>
+            <tbody id="vendorRequestsTbody">
+              <tr><td colspan="8"><div class="vendor-table-loading"><span></span> Loading your records…</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="vendor-spreadsheet-foot"><i class="fa-solid fa-lock"></i> Vendor-isolated view · records from other venues are never rendered.</div>
+      </section>
     `;
 
     (async () => {
       try {
-        // PERFORMANCE FIX:
-        // Previously we fetched the entire `/user/unique_user` and filtered client-side.
-        // Now we fetch only vendor rows by querying on `venueId`.
-        // IMPORTANT: Firebase RTDB requires an .indexOn for `venueId`.
-        // If index is missing, RTDB throws:
-        //   "Index not defined, add .indexOn: \"venueId\" ..."
-        // We'll show a clear message and fail fast instead of freezing UI.
-
-
-        // User records are encrypted as whole documents, so RTDB cannot index
-        // plaintext venueId. Fetch once, decrypt in memory, then filter.
-        const snap = await get(ref(db, "/user/unique_user"));
-
-        // If RTDB rules/index missing for venueId, request might fail earlier and land in catch.
-        // When it fails, we'll show a readable hint instead of leaving UI stuck.
-
-
-        const tbody = document.getElementById("vendorRequestsTbody");
+        const data = await getCached('/user/unique_user');
+        const tbody = document.getElementById('vendorRequestsTbody');
         if (!tbody) return;
 
-        tbody.innerHTML = "";
-        if (!snap.exists()) {
-          tbody.innerHTML = `
-            <tr>
-              <td colspan="9" style="padding:14px;color:rgba(229,231,235,0.7);font-weight:800;">No user records found.</td>
-            </tr>
-          `;
-          setStatus("Ready");
-          return;
-        }
-
-        const data = snap.exists() ? (await decryptDeep(snap.val() || {})) : {};
-        const rows = [];
-
-        for (const [id, r] of Object.entries(data)) {
-          if (!r) continue;
-
-          const portfolioType = String(r.selectedPortfolioType ?? r.portfolioType ?? "");
-
-          const uid = r.user_UID ?? r.useruid ?? r.UID ?? r.uid ?? id;
-          const nameCell = r.clientname ?? r.name ?? "";
-          const contactCell = r.clientcontact ?? r.contact ?? "";
-          const eventType = r.event_type ?? r.eventType ?? portfolioType ?? "";
-
-          const targetDate = r.targetdate ?? r.targetDate ?? "";
-          const eventTime = r.event_time ?? r.eventTime ?? "";
-          const requestedDate = r.requesteddate ?? r.requestedDate ?? "";
-          const status = r.status ?? r.approval_status ?? "pending";
-
-          rows.push({
-            uid: String(uid ?? ""),
-            name: String(nameCell ?? ""),
-            contact: String(contactCell ?? ""),
-            eventType: String(eventType ?? ""),
-            targetDate: String(targetDate ?? ""),
-            eventTime: String(eventTime ?? ""),
-            requestedDate: String(requestedDate ?? ""),
-            status: String(status ?? ""),
-            rawKey: id,
-            raw: r,
-          });
-        }
-
-
-        if (!rows.length) {
-          tbody.innerHTML = `
-            <tr>
-              <td colspan="9" style="padding:14px;color:rgba(229,231,235,0.7);font-weight:800;">No enrollment rows to show.</td>
-            </tr>
-          `;
-          setStatus("Ready");
-          return;
-        }
-
-        const statusColor = (s) => {
-          const x = String(s ?? "").toLowerCase();
-          if (x.includes("approved") || x === "approved") return "rgba(34,197,94,0.95)";
-          if (x.includes("deny") || x.includes("denied") || x === "denied") return "rgba(239,68,68,0.95)";
-          return "rgba(251,191,36,0.95)";
+        const normalize = (v) => String(v ?? '').trim();
+        const getRecordVenueId = (r) => normalize(
+          r?.venueId ?? r?.venueID ?? r?.venueUid ?? r?.venueUID ??
+          r?.selectedAssetUid ?? r?.selectedAssetUID ?? r?.assetUid ?? r?.assetUID ?? ''
+        );
+        const sameVenue = (r) => {
+          const recordVenueId = getRecordVenueId(r);
+          // IMPORTANT: no fallback. A request without a venue id is not allowed
+          // into a vendor's private spreadsheet.
+          return Boolean(recordVenueId) && recordVenueId === vendorId;
         };
 
-        // Sort by most recent first (best-effort)
-        const parseRequested = (v) => {
-          const s = String(v ?? '').trim();
-          if (!s) return null;
-          // already ISO?
-          const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-          if (iso) return new Date(s);
-          // dd/mm/yyyy
-          const dm = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-          if (dm) {
-            const yyyy = dm[3];
-            const mm = dm[2];
-            const dd = dm[1];
-            return new Date(`${yyyy}-${mm}-${dd}`);
-          }
-          // fallback
-          const d = new Date(s);
+        const parseDate = (v) => {
+          const value = normalize(v);
+          if (!value) return null;
+          const iso = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+          if (iso) return new Date(`${iso[1]}-${String(iso[2]).padStart(2,'0')}-${String(iso[3]).padStart(2,'0')}T00:00:00`);
+          const dm = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (dm) return new Date(`${dm[3]}-${String(dm[2]).padStart(2,'0')}-${String(dm[1]).padStart(2,'0')}T00:00:00`);
+          const d = new Date(value);
           return Number.isNaN(d.getTime()) ? null : d;
         };
+        const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+        const statusKind = (status) => {
+          const x = normalize(status).toLowerCase();
+          if (x.includes('approved')) return 'approved';
+          if (x.includes('deny') || x.includes('denied') || x.includes('rejected')) return 'deny';
+          return 'pending';
+        };
+        const statusLabel = (status) => {
+          const kind = statusKind(status);
+          return kind === 'approved' ? 'Approved' : kind === 'deny' ? 'Denied' : 'Pending';
+        };
 
-        rows.sort((a, b) => {
-          const da = parseRequested(a.raw?.requesteddate ?? a.raw?.requestedDate ?? a.requestedDate);
-          const db = parseRequested(b.raw?.requesteddate ?? b.raw?.requestedDate ?? b.requestedDate);
-          if (da && db) return db.getTime() - da.getTime();
-          if (da && !db) return -1;
-          if (!da && db) return 1;
-
-          // fallback: rawKey stable-ish but lexicographic; keep as last resort
-          return String(b.rawKey).localeCompare(String(a.rawKey));
-        });
-
-        let activeYm = null; // format: YYYY-MM
-        // default current month
-        {
-          const now = new Date();
-          activeYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        if (!data || !Object.keys(data).length) {
+          // Do not return here: the realtime subscription below must stay active
+          // so a brand-new booking appears without refreshing the spreadsheet.
+          data = {};
         }
 
-        const applyFilter = () => {
-          const statusEl = document.getElementById('vendorSpreadsheetStatusFilter');
-          const statusVal = String(statusEl?.value ?? 'all').toLowerCase();
+        // Strict vendor isolation happens BEFORE any row is constructed/rendered.
+        let rows = [];
+        const buildRowsFromData = (sourceData) => {
+          const nextRows = [];
+          for (const [rawKey, r] of Object.entries(sourceData || {})) {
+          if (!r || !sameVenue(r)) continue;
+            nextRows.push({
+              rawKey,
+            uid: normalize(r.user_UID ?? r.useruid ?? r.UID ?? r.uid ?? rawKey),
+            name: normalize(r.clientname ?? r.name ?? r.username ?? r.userName ?? '—'),
+            contact: normalize(r.clientcontact ?? r.contact ?? r.phone ?? r.number ?? r.whatsapp ?? '—'),
+            eventType: normalize(r.event_type ?? r.eventType ?? r.selectedPortfolioType ?? 'Event'),
+            targetDate: normalize(r.targetdate ?? r.targetDate ?? '—'),
+            eventTime: normalize(r.event_time ?? r.eventTime ?? '—'),
+            requestedDate: normalize(r.requesteddate ?? r.requestedDate ?? r.requestDate ?? '—'),
+            status: normalize(r.status ?? r.approval_status ?? r.action ?? 'pending'),
+              raw: r
+            });
+          }
+          nextRows.sort((a, b) => {
+            const da = parseDate(a.requestedDate), db = parseDate(b.requestedDate);
+            if (da && db) return db.getTime() - da.getTime();
+            if (da) return -1;
+            if (db) return 1;
+            return b.rawKey.localeCompare(a.rawKey);
+          });
+          return nextRows;
+        };
 
-          const searchEl = document.getElementById('vendorSpreadsheetSearch');
-          const searchVal = String(searchEl?.value ?? '').trim().toLowerCase();
+        rows = buildRowsFromData(data);
 
-          // activeYm ko arrow se set kiya jayega (default current month)
-          const filtered = rows.filter((row) => {
-            // status filtering
-            const st = String(row.status ?? '').toLowerCase();
-            let okStatus = true;
-            if (statusVal === 'all') okStatus = true;
-            else if (statusVal === 'pending') okStatus = st === 'pending';
-            else if (statusVal === 'approved') okStatus = st.includes('approved');
-            else if (statusVal === 'deny') okStatus = st.includes('deny');
-            if (!okStatus) return false;
+        /* rows are kept live from the shared Firebase cache. */
 
-            // search filtering (name / contact / uid)
-            if (searchVal) {
-              const hay = `${row.name} ${row.contact} ${row.uid}`.toLowerCase();
-              if (!hay.includes(searchVal)) return false;
+        let activeYm;
+        const today = new Date();
+        activeYm = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+
+        const monthLabel = document.getElementById('vendorSpreadsheetMonthYearLabel');
+        const renderMonthLabel = () => {
+          const [y, m] = activeYm.split('-').map(Number);
+          monthLabel.textContent = new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+        };
+
+        const renderRows = () => {
+          const statusFilter = normalize(document.getElementById('vendorSpreadsheetStatusFilter')?.value || 'all').toLowerCase();
+          const search = normalize(document.getElementById('vendorSpreadsheetSearch')?.value || '').toLowerCase();
+          const filtered = rows.filter(row => {
+            const kind = statusKind(row.status);
+            if (statusFilter !== 'all' && kind !== statusFilter) return false;
+            if (search) {
+              const hay = `${row.uid} ${row.name} ${row.contact} ${row.eventType} ${row.targetDate} ${row.eventTime}`.toLowerCase();
+              if (!hay.includes(search)) return false;
             }
-
-
-            if (!activeYm) return true;
-
-            // month-year filtering
-            const dt = parseRequested(row.requestedDate ?? row.raw?.requesteddate ?? row.raw?.requestedDate);
-            if (!dt) return false;
-            const yyyy = dt.getFullYear();
-            const mm = String(dt.getMonth() + 1).padStart(2, '0');
-            const ym = `${yyyy}-${mm}`;
+            if (search) return true; // searching is global across this vendor's records
+            const d = parseDate(row.requestedDate);
+            if (!d) return false;
+            const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
             return ym === activeYm;
           });
 
-          tbody.innerHTML = filtered
-            .map((row) => {
-              const sCol = statusColor(row.status);
-              return `
-              <tr style="border-bottom:1px solid rgba(251,113,133,0.18);">
-                <td style="padding:10px;">${row.uid}</td>
-                <td style="padding:10px;">${row.name}</td>
-                <td style="padding:10px;">${row.contact}</td>
-                <td style="padding:10px;">${row.eventType}</td>
-                <td style="padding:10px;">${row.targetDate}</td>
-                <td style="padding:10px;">${row.eventTime}</td>
-                <td style="padding:10px;">${row.requestedDate}</td>
-                <td style="padding:10px;">
-                  <span style="color:${sCol};font-weight:900;">${row.status}</span>
-                </td>
-                <td style="padding:10px;">
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    ${String(row.status ?? '').toLowerCase().includes('approved') || String(row.status ?? '').toLowerCase().includes('deny') ? `
-                      <div style="opacity:0.75;font-weight:800;color:rgba(229,231,235,0.8);padding:6px 0;">Action Done</div>
-                    ` : `
-                      <button type="button" class="a-btn" style="padding:8px 10px;" data-action="approve" data-user-key="${row.rawKey}">Approve</button>
-                      <button type="button" class="a-btn" style="padding:8px 10px;" data-action="deny" data-user-key="${row.rawKey}">Deny</button>
-                    `}
-                  </div>
-                </td>
-              </tr>
-            `;
-            })
-            .join("");
-        };
-
-        // Build Month-Year dropdown options from rows, and auto-select current month/year
-        const monthEl = document.getElementById('vendorSpreadsheetMonthYearFilter');
-        if (monthEl) {
-          const monthsSet = new Set();
-          for (const row of rows) {
-            const dt = parseRequested(row.requestedDate ?? row.raw?.requesteddate ?? row.raw?.requestedDate);
-            if (!dt) continue;
-            const yyyy = dt.getFullYear();
-            const mm = String(dt.getMonth() + 1).padStart(2, '0');
-            monthsSet.add(`${yyyy}-${mm}`);
+          if (!filtered.length) {
+            tbody.innerHTML = `<tr><td colspan="8"><div class="vendor-empty-state vendor-empty-state--table"><i class="fa-regular fa-calendar-xmark"></i><strong>No matching records</strong><span>Try another status, search term or month.</span></div></td></tr>`;
+            return;
           }
 
-          const monthsArr = Array.from(monthsSet).sort();
-          const current = new Date();
-          const currYm = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`;
-
-          monthEl.innerHTML = `<option value="all" selected>All</option>`;
-
-          // If current month exists, select it; else keep All selected.
-          for (const ym of monthsArr) {
-            const opt = document.createElement('option');
-            opt.value = ym;
-            const [y, m] = ym.split('-');
-            const label = `${m}/${y}`; // MM/YYYY
-            opt.textContent = label;
-            if (ym === currYm) {
-              opt.selected = true;
-              // ensure 'All' not selected
-              monthEl.value = ym;
-            }
-            monthEl.appendChild(opt);
-          }
-
-          // If current not found, default stays All (already selected)
-          // Ensure applyFilter reads current month selection correctly.
-        }
-
-        const monthLabelEl = document.getElementById('vendorSpreadsheetMonthYearLabel');
-        const updateMonthLabel = () => {
-          if (!monthLabelEl || !activeYm) return;
-          const [y, m] = activeYm.split('-');
-          const mNum = Number(m);
-          monthLabelEl.textContent = `${mNum}/${y}`; // MM/YYYY
+          tbody.innerHTML = filtered.map(row => {
+            const kind = statusKind(row.status);
+            const actionDisabled = kind !== 'pending';
+            return `
+              <tr data-user-key="${escapeHtml(row.rawKey)}">
+                <td data-label="Client"><div class="vendor-client-cell"><span class="vendor-avatar">${escapeHtml((row.name || 'V').charAt(0).toUpperCase())}</span><div><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.uid)}</small></div></div></td>
+                <td data-label="Contact">${escapeHtml(row.contact)}</td>
+                <td data-label="Event"><span class="vendor-event-chip">${escapeHtml(row.eventType)}</span></td>
+                <td data-label="Target date"><strong>${escapeHtml(row.targetDate)}</strong></td>
+                <td data-label="Time">${escapeHtml(row.eventTime)}</td>
+                <td data-label="Requested">${escapeHtml(row.requestedDate)}</td>
+                <td data-label="Status"><span class="vendor-status vendor-status--${kind}">${statusLabel(row.status)}</span></td>
+                <td data-label="Action" class="vendor-actions-cell">
+                  ${actionDisabled ? `<span class="vendor-action-muted">${kind === 'approved' ? 'Closed' : 'Declined'}</span>` : `<button type="button" class="vendor-row-btn vendor-row-btn--approve" data-action="approve" data-user-key="${escapeHtml(row.rawKey)}"><i class="fa-solid fa-check"></i> Approve</button><button type="button" class="vendor-row-btn vendor-row-btn--deny" data-action="deny" data-user-key="${escapeHtml(row.rawKey)}"><i class="fa-solid fa-xmark"></i> Deny</button>`}
+                </td>
+              </tr>`;
+          }).join('');
         };
-        updateMonthLabel();
 
-        const prevBtn = document.getElementById('vendorSpreadsheetMonthPrev');
-        const nextBtn = document.getElementById('vendorSpreadsheetMonthNext');
+        renderMonthLabel();
+        renderRows();
+        setStatus('Live');
 
-        if (prevBtn) {
-          prevBtn.addEventListener('click', () => {
-            if (!activeYm) return;
-            const [y, m] = activeYm.split('-').map(Number);
-            const d = new Date(y, m - 2, 1);
-            activeYm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            updateMonthLabel();
-            applyFilter();
-          });
-        }
+        document.getElementById('vendorSpreadsheetStatusFilter')?.addEventListener('change', renderRows);
+        document.getElementById('vendorSpreadsheetSearch')?.addEventListener('input', renderRows);
+        document.getElementById('vendorSpreadsheetMonthPrev')?.addEventListener('click', () => {
+          const [y,m] = activeYm.split('-').map(Number);
+          const d = new Date(y, m - 2, 1);
+          activeYm = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          renderMonthLabel(); renderRows();
+        });
+        document.getElementById('vendorSpreadsheetMonthNext')?.addEventListener('click', () => {
+          const [y,m] = activeYm.split('-').map(Number);
+          const d = new Date(y, m, 1);
+          activeYm = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+          renderMonthLabel(); renderRows();
+        });
 
-        if (nextBtn) {
-          nextBtn.addEventListener('click', () => {
-            if (!activeYm) return;
-            const [y, m] = activeYm.split('-').map(Number);
-            const d = new Date(y, m, 1);
-            activeYm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            updateMonthLabel();
-            applyFilter();
-          });
-        }
+        tbody.addEventListener('click', async (event) => {
+          const button = event.target.closest('button[data-action][data-user-key]');
+          if (!button || button.disabled) return;
+          const rawKey = button.dataset.userKey;
+          const action = button.dataset.action;
+          const row = rows.find(item => item.rawKey === rawKey);
+          // Re-check scope before every mutation; this prevents a stale DOM row
+          // from updating another venue's request.
+          if (!row || !sameVenue(row.raw)) return;
 
-        // initial render
-        applyFilter();
+          const siblingButtons = button.parentElement.querySelectorAll('button');
+          siblingButtons.forEach(btn => { btn.disabled = true; btn.classList.add('is-busy'); });
+          try {
+            setStatus(`Updating ${action === 'approve' ? 'approval' : 'decision'}…`);
+            const { set } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
+            const recordSnap = await get(ref(db, `/user/unique_user/${rawKey}`));
+            if (!recordSnap.exists()) throw new Error('User record not found.');
+            const currentRecord = await decryptDeep(recordSnap.val());
+            if (!sameVenue(currentRecord)) throw new Error('This record is outside your assigned venue.');
+            const nextStatus = action === 'approve' ? 'Approved' : 'Deny';
+            const updatedRecord = { ...(currentRecord || {}), status: nextStatus };
 
+            // Paint the changed row immediately — do not reload the spreadsheet.
+            row.status = nextStatus;
+            row.raw = updatedRecord;
+            renderRows();
+            setStatus('Live');
 
-        const filterEl = document.getElementById('vendorSpreadsheetStatusFilter');
-        if (filterEl) {
-          filterEl.addEventListener('change', () => {
-            // re-render only, event delegation click handler remains on tbodyEl
-            applyFilter();
-          });
-        }
-
-        const searchBoxEl = document.getElementById('vendorSpreadsheetSearch');
-        if (searchBoxEl) {
-          searchBoxEl.addEventListener('input', () => applyFilter());
-        }
-
-
-
-
-        // Approve/Deny button handlers (per-row disable to prevent double action)
-        const tbodyEl = document.getElementById("vendorRequestsTbody");
-        if (tbodyEl) {
-          tbodyEl.addEventListener("click", async (evt) => {
-            const btn = evt.target?.closest?.('button[data-action][data-user-key]');
-            if (!btn) return;
-            evt.preventDefault();
-            evt.stopPropagation();
-
-            if (btn.disabled) return;
-
-            const action = String(btn.dataset.action ?? "").toLowerCase();
-            const rawKey = String(btn.dataset.userKey ?? "");
-            if (!rawKey || (action !== 'approve' && action !== 'deny')) return;
-
-            // Prevent double click / double write
-            const row = btn.closest('tr');
-            const approveBtn = row?.querySelector('button[data-action="approve"][data-user-key="' + rawKey + '"]');
-            const denyBtn = row?.querySelector('button[data-action="deny"][data-user-key="' + rawKey + '"]');
-
-            if (btn.disabled || approveBtn?.disabled || denyBtn?.disabled) return;
-
-            // make unpressable immediately
-            btn.disabled = true;
-            btn.style.pointerEvents = 'none';
-
-            if (approveBtn) {
-              approveBtn.disabled = true;
-              approveBtn.style.pointerEvents = 'none';
+            // Persist in Firebase. The realtime cache listener above will reconcile
+            // this optimistic state with the encrypted database value automatically.
+            await set(ref(db, `/user/unique_user/${rawKey}`), await encryptDeep(updatedRecord));
+          } catch (err) {
+            console.error('Vendor request update failed:', err);
+            // Roll back the optimistic paint if Firebase rejected the write.
+            if (row && typeof currentRecord !== 'undefined') {
+              row.status = currentRecord.status ?? currentRecord.approval_status ?? currentRecord.action ?? 'pending';
+              row.raw = currentRecord;
+              renderRows();
             }
-            if (denyBtn) {
-              denyBtn.disabled = true;
-              denyBtn.style.pointerEvents = 'none';
-            }
-            if (approveBtn) approveBtn.disabled = true;
-            if (denyBtn) denyBtn.disabled = true;
+            setStatus('Live');
+            siblingButtons.forEach(btn => { btn.disabled = false; btn.classList.remove('is-busy'); });
+          }
+        });
 
-            // Optional: visual state
-            if (approveBtn) approveBtn.style.opacity = '0.6';
-            if (denyBtn) denyBtn.style.opacity = '0.6';
-
-            const newStatus = action === 'approve' ? 'Approved' : 'Deny';
-
-            try {
-              setStatus(`Updating ${newStatus}...`);
-
-              const { set } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-              const recordSnap = await get(ref(db, `/user/unique_user/${rawKey}`));
-              if (!recordSnap.exists()) throw new Error("User record not found.");
-              const currentRecord = await decryptDeep(recordSnap.val());
-              const updatedRecord = { ...(currentRecord || {}), status: newStatus };
-              await set(ref(db, `/user/unique_user/${rawKey}`), await encryptDeep(updatedRecord));
-
-
-              // Update status text in UI
-              const statusSpan = row?.querySelector('span');
-              if (statusSpan) {
-                statusSpan.textContent = newStatus;
-                // update color quickly
-                if (newStatus === 'Approved') statusSpan.style.color = 'rgba(34,197,94,0.95)';
-                if (newStatus === 'Deny') statusSpan.style.color = 'rgba(239,68,68,0.95)';
-              }
-
-              setStatus('Ready');
-
-              // Keep user in the same Vendor Spreadsheet view.
-              // (Do not redirect back to vendor-management on Approve/Deny.)
-              // Optionally re-apply current filters by simply re-rendering the same view.
-              try {
-                renderView('vendor-spreadsheet');
-                // Wait a tick so the table DOM mounts, then re-apply last filter value.
-                setTimeout(() => {
-                  const statusEl = document.getElementById('vendorSpreadsheetStatusFilter');
-                  const searchEl = document.getElementById('vendorSpreadsheetSearch');
-                  if (statusEl) statusEl.dispatchEvent(new Event('change'));
-                  if (searchEl) searchEl.dispatchEvent(new Event('input'));
-                }, 150);
-              } catch (e) {}
-            } catch (err) {
-              console.error('Approve/Deny update failed:', err);
-              // If write fails, re-enable buttons so vendor can retry
-              btn.disabled = false;
-              if (approveBtn) approveBtn.disabled = false;
-              if (denyBtn) denyBtn.disabled = false;
-              if (approveBtn) approveBtn.style.opacity = '';
-              if (denyBtn) denyBtn.style.opacity = '';
-              setStatus('Ready');
-            }
-          });
+        // Firebase onValue is already wired by data_cache.js. Subscribe once so the
+        // spreadsheet repaints only its visible rows when a request is added/changed.
+        // No full renderView(), no loading overlay, and no second page fetch.
+        if (window.__vendorSpreadsheetUnsub) {
+          try { window.__vendorSpreadsheetUnsub(); } catch (_) {}
         }
-
-        setStatus("Ready");
+        window.__vendorSpreadsheetUnsub = subscribeCached('/user/unique_user', (liveData) => {
+          rows = buildRowsFromData(liveData);
+          renderRows();
+          setStatus('Live');
+        });
       } catch (err) {
-        console.error("Spreadsheet load error:", err);
-        setStatus("Ready");
-        const tbody = document.getElementById("vendorRequestsTbody");
-        if (tbody) {
-          tbody.innerHTML = `
-            <tr>
-              <td colspan="9" style="padding:14px;color:rgba(239,68,68,0.95);font-weight:900;">Failed to load table.</td>
-            </tr>
-          `;
-        }
+        console.error('Vendor spreadsheet load error:', err);
+        setStatus('Error');
+        const tbody = document.getElementById('vendorRequestsTbody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="8"><div class="vendor-empty-state vendor-empty-state--table"><i class="fa-solid fa-triangle-exclamation"></i><strong>Could not load records</strong><span>Please refresh the vendor panel and try again.</span></div></td></tr>`;
       }
     })();
 
@@ -1563,10 +1463,10 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         // Determine vendor record by scanning both banquet + hall once (small tables expected).
         // If banquet match: update standardrate/seasonalrate.
         // If hall match: update standardcost/seasoncost.
-        const banquetSnap = await get(ref(db, '/banquet/unique_bank'));
+        const banquetData = await getCached('/banquet/unique_bank');
         let target = null; // { basePath, key, standardField, seasonalField }
-        if (banquetSnap.exists()) {
-          const data = await decryptDeep(banquetSnap.val() || {});
+        if (banquetData && Object.keys(banquetData).length) {
+          const data = banquetData;
           for (const [k, rec] of Object.entries(data)) {
             if (!rec) continue;
             const uid = String(rec.UID ?? k);
@@ -1586,9 +1486,9 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         }
 
         if (!target) {
-          const hallSnap = await get(ref(db, '/hall/unique_hall'));
-          if (hallSnap.exists()) {
-            const data = await decryptDeep(hallSnap.val() || {});
+          const hallData = await getCached('/hall/unique_hall');
+          if (hallData && Object.keys(hallData).length) {
+            const data = hallData;
             for (const [k, rec] of Object.entries(data)) {
               if (!rec) continue;
               const uid = String(rec.hall_UID ?? rec.UID ?? k);
@@ -1771,43 +1671,27 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
 
 async function verifyVendor(username, password) {
-  // Vendor auth: /banquet/unique_bank/* using vendor_user + vendor_pass
-  const banquetRef = ref(db, "/banquet/unique_bank");
-  const banquetSnap = await get(banquetRef);
+  // Both venue collections are warmed in parallel and kept live for the whole session.
+  const [banquetData, hallData] = await Promise.all([
+    getCached('/banquet/unique_bank'),
+    getCached('/hall/unique_hall')
+  ]);
 
-  if (banquetSnap.exists()) {
-    const data = await decryptDeep(banquetSnap.val() || {});
-    for (const [vendorId, record] of Object.entries(data || {})) {
-      if (!record) continue;
-      if (
-        String(record.vendor_user ?? "") === String(username) &&
-        String(record.vendor_pass ?? "") === String(password)
-      ) {
-        return { vendorId, record, source: "banquet" };
-      }
+  for (const [vendorId, record] of Object.entries(banquetData || {})) {
+    if (!record) continue;
+    if (String(record.vendor_user ?? '') === String(username) && String(record.vendor_pass ?? '') === String(password)) {
+      return { vendorId, record, source: 'banquet' };
     }
   }
 
-  // Hall auth: /hall/unique_hall/* using vendor_user + vendor_pass (as stored in haha.json)
-  const hallRef = ref(db, "/hall/unique_hall");
-  const hallSnap = await get(hallRef);
-
-  if (!hallSnap.exists()) return null;
-
-  const hallData = await decryptDeep(hallSnap.val() || {});
   for (const [hallId, record] of Object.entries(hallData || {})) {
     if (!record) continue;
-    if (
-      String(record.vendor_user ?? "") === String(username) &&
-      String(record.vendor_pass ?? "") === String(password)
-    ) {
-      return { vendorId: hallId, record, source: "hall" };
+    if (String(record.vendor_user ?? '') === String(username) && String(record.vendor_pass ?? '') === String(password)) {
+      return { vendorId: hallId, record, source: 'hall' };
     }
   }
-
   return null;
 }
-
 
 function setAuthedSession(vendorId, source = "") {
   // Auth will be kept only in-memory for this page session.
@@ -1826,6 +1710,7 @@ function setAuthedSession(vendorId, source = "") {
 
 
 function clearSession() {
+  clearVendorViewListeners();
   window.__vendor_authed = false;
   window.__vendor_id = undefined;
   window.__vendor_source = "";
@@ -1841,7 +1726,7 @@ function isAuthed() {
 if (isAuthed()) {
   setOverlayHidden(true);
   setStatus("Authenticated");
-  // default render
+  setAppLoading(true, 'Please wait — preparing your vendor dashboard…');
   renderView("vendor-management");
 } else {
   setOverlayHidden(false);
@@ -1870,55 +1755,62 @@ verifyForm.addEventListener("submit", async (e) => {
     window.__vendor_name = name; 
     setAuthedSession(match.vendorId, match.source);
     setOverlayHidden(true);
+    setAppLoading(true, 'Please wait — preparing your vendor dashboard…');
     document.getElementById("pageTitle").textContent = `Welcome ${name}`;
 
-    // --- FIXED COUNTDOWN LOGIC ---
+    // Recalculate this exact vendor venue's expiry immediately on login.
     try {
-      const vendorIdStr = String(match.vendorId ?? "");
-      if (vendorIdStr) {
-        const { get, set } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-        const updateCountdown = async (baseRef) => {
-          const snap = await get(ref(db, baseRef));
-          if (!snap.exists()) return;
-          const data = await decryptDeep(snap.val() || {});
-          const updates = [];
-          // Pakistan realtime (Asia/Karachi) date for correct day-difference
-          // Firebase/Browser timezone difference ki wajah se off-by-one aa raha ho to yeh fix karega.
-          const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }); // YYYY-MM-DD
-          const today = new Date(`${todayStr}T00:00:00`);
-
-
-
-          for (const [docId, rec] of Object.entries(data)) {
-            const recordUid = String(rec.UID ?? rec.uid ?? rec.hall_UID ?? rec.hallId ?? rec.id ?? rec.vendorId ?? "");
-            // Primary: remaining days = expireDate - today(Pakistan)
-            if (recordUid === vendorIdStr && (rec.expiredate || rec.expireDate)) {
-              const expireRaw = rec.expiredate ?? rec.expireDate;
-              const expireStr = String(expireRaw);
-              const expireISO = expireStr.length >= 10 ? expireStr.slice(0, 10) : expireStr;
-              const expireDate = new Date(`${expireISO}T00:00:00`);
-
-              if (!Number.isNaN(expireDate.getTime())) {
-                const diffTime = expireDate - today;
-                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                const updatedVenue = { ...rec, countdowndays: String(diffDays) };
-                updates.push(encryptDeep(updatedVenue).then((encrypted) => set(ref(db, `${baseRef}/${docId}`), encrypted)));
-              }
-            }
-
-
+      const { get, set } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
+      const basePath = match.source === 'hall' ? '/hall/unique_hall' : '/banquet/unique_bank';
+      const recordPath = `${basePath}/${match.vendorId}`;
+      const freshSnap = await get(ref(db, recordPath));
+      if (freshSnap.exists()) {
+        const freshRecord = await decryptDeep(freshSnap.val() || {});
+        const next = { ...(freshRecord || {}) };
+        const startRaw = String(next.startdate ?? next.startDate ?? '').trim();
+        let expire = String(next.expiredate ?? next.expireDate ?? '').trim();
+        if (startRaw) {
+          const m = startRaw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (m) {
+            const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+            dt.setDate(dt.getDate() + 30);
+            expire = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
           }
-          await Promise.all(updates);
-        };
-
-        // Do not block login on maintenance/countdown refresh.
-        void updateCountdown('/banquet/unique_bank').catch(console.error);
-        void updateCountdown('/hall/unique_hall').catch(console.error);
+        }
+        if (expire) {
+          const em = expire.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+          const tm = todayStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (em && tm) {
+            const expiryDate = new Date(Number(em[1]), Number(em[2]) - 1, Number(em[3]));
+            const today = new Date(Number(tm[1]), Number(tm[2]) - 1, Number(tm[3]));
+            next.expiredate = expire;
+            next.countdowndays = String(Math.ceil((expiryDate - today) / 86400000));
+            await set(ref(db, recordPath), await encryptDeep(next));
+            seedCached(basePath, { ...(basePath.includes('/banquet/') ? peekCached('/banquet/unique_bank', {}) : peekCached('/hall/unique_hall', {})), [match.vendorId]: next });
+            match.record = next;
+          }
+        }
       }
     } catch (e) {
-      console.error('Update error:', e);
+      console.error('Vendor expiry refresh error:', e);
     }
     renderView("vendor-management");
+    clearInterval(window.__vendorExpiryTicker);
+    window.__vendorExpiryTicker = window.setInterval(() => {
+      const rawExpire = String(match.record?.expiredate ?? match.record?.expireDate ?? '').trim().slice(0, 10);
+      const m = rawExpire.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+      const tm = todayStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const el = document.getElementById('vendorExpiryDate');
+      const dayEl = document.getElementById('vendorExpiryDays');
+      if (!m || !tm) return;
+      const expiryDate = new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+      const today = new Date(Number(tm[1]), Number(tm[2])-1, Number(tm[3]));
+      const days = Math.ceil((expiryDate - today) / 86400000);
+      if (el) el.textContent = `Expires: ${rawExpire}`;
+      if (dayEl) dayEl.textContent = days < 0 ? `Expired ${Math.abs(days)} days ago` : `${days} Days Remaining`;
+    }, 60000);
   } catch (err) {
     console.error("Error:", err);
     setMessage("Verification failed.", true);

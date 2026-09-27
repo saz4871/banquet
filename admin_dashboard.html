@@ -11,6 +11,15 @@
     <link rel="stylesheet" href="./admin_dashboard_login_ui.css" />
   </head>
   <body>
+    <div id="appLoadingOverlay" class="app-loading-overlay" aria-hidden="true">
+      <div class="app-loading-card">
+        <div class="app-loading-orbit"><span></span><span></span><span></span></div>
+        <div class="app-loading-eyebrow">EVENT VAULT</div>
+        <div class="app-loading-title">Please wait</div>
+        <div class="app-loading-text">Preparing your workspace and syncing the latest data…</div>
+        <div class="app-loading-progress"><span></span></div>
+      </div>
+    </div>
     <!-- Login overlay (embedded so admin_dashboard.html itself shows login on refresh/unauth) -->
     <div id="adminLoginOverlay" class="admin-login-overlay" aria-hidden="true">
       <div class="snow" aria-hidden="true"></div>
@@ -20,15 +29,19 @@
 
         <form id="verifyForm" class="admin-login-form" autocomplete="off">
           <label class="admin-login-label" for="twoStepKey">Enter 2-Step Authentication Key:</label>
-          <input
-            id="twoStepKey"
-            name="twoStepKey"
-            class="admin-login-input"
-            type="password"
-            inputmode="numeric"
-            placeholder="Enter key"
-            required
-          />
+          <div class="admin-login-input-wrap">
+            <input
+              id="twoStepKey"
+              name="twoStepKey"
+              class="admin-login-input"
+              type="password"
+              inputmode="numeric"
+              placeholder="Enter 2-Step Key"
+              autocomplete="current-password"
+              required
+            />
+            <button id="togglePass" class="admin-login-pass-toggle" type="button" aria-label="Show authentication key" aria-pressed="false"><i class="fa-regular fa-eye"></i></button>
+          </div>
 
           <button id="verifyBtn" class="admin-login-btn" type="submit">
             Verify
@@ -116,12 +129,6 @@
     </div>
 
     <script type="module" src="./admin_dashboard.js"></script>
-    <script type="module" src="./admin_login.js"></script>
-
-
-    <noscript>
-      <meta http-equiv="refresh" content="0; url=./admin_login.html" />
-    </noscript>
   </body>
 </html>
 

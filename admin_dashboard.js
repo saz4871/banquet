@@ -1,9 +1,226 @@
-import { encryptDeep, decryptDeep } from "./encryption/encryption.js";
+import { encryptString, encryptDeep, decryptString, decryptDeep } from "./encryption/encryption.js";
+import { migrateExistingDatabaseEncryption } from "./encryption/migrate.js";
+import { getCached, hasCached, subscribeCached, peekCached, invalidateCached, seedCached } from "./data_cache.js";
+import { deletePortfolioViewCounter } from "./view_tracker.js";
 
-async function hashAdminKey(value) {
-  const bytes = new TextEncoder().encode(String(value));
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+const ADMIN_AUTH_PATH = "data/twostepauthkey";
+const LEGACY_ADMIN_AUTH_PATH = "banquet/twostepauthkey";
+const VENUE_PATHS = ["/banquet/unique_bank", "/hall/unique_hall"];
+const VENUE_LIFETIME_DAYS = 30;
+const ADMIN_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+let adminIdleTimer = null;
+
+function resetAdminIdleTimer() {
+  if (adminIdleTimer) clearTimeout(adminIdleTimer);
+  if (window.__adminVerifiedThisLoad !== true) return;
+  adminIdleTimer = setTimeout(() => {
+    window.__adminVerifiedThisLoad = false;
+    window.__showAdminLogin?.();
+  }, ADMIN_IDLE_TIMEOUT_MS);
+}
+
+function setupAdminIdleProtection() {
+  const activityEvents = ['pointerdown', 'keydown', 'mousemove', 'touchstart', 'scroll'];
+  activityEvents.forEach((eventName) => {
+    window.addEventListener(eventName, () => resetAdminIdleTimer(), { passive: true });
+  });
+  resetAdminIdleTimer();
+}
+
+function pakistanTodayISO() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" });
+}
+
+function addDaysISO(dateStr, days = VENUE_LIFETIME_DAYS) {
+  const m = String(dateStr || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(dt.getTime())) return "";
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+}
+
+function daysUntilISO(expireDate) {
+  const m = String(expireDate || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  const expiry = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const todayRaw = pakistanTodayISO();
+  const tm = todayRaw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!tm || Number.isNaN(expiry.getTime())) return "";
+  const today = new Date(Number(tm[1]), Number(tm[2]) - 1, Number(tm[3]));
+  return String(Math.ceil((expiry - today) / 86400000));
+}
+
+function normalizeVenueExpiry(record) {
+  const next = { ...(record || {}) };
+  const start = String(next.startdate ?? next.startDate ?? "").trim();
+  const calculatedExpire = start ? addDaysISO(start, VENUE_LIFETIME_DAYS) : String(next.expiredate ?? next.expireDate ?? "").trim();
+  if (calculatedExpire) {
+    next.expiredate = calculatedExpire;
+    next.countdowndays = daysUntilISO(calculatedExpire);
+  }
+  return next;
+}
+
+async function readAuthNodeEntries(nodeValue) {
+  if (nodeValue == null) return [];
+
+  // Preferred schema: encrypted child-name + encrypted child-value.
+  if (nodeValue && typeof nodeValue === "object" && !Array.isArray(nodeValue)) {
+    const decoded = [];
+    for (const [rawName, rawValue] of Object.entries(nodeValue)) {
+      let name = rawName;
+      try { name = await decryptString(rawName); } catch (_) {}
+      let value = rawValue;
+      try { value = await decryptDeep(rawValue); } catch (_) {}
+      decoded.push({ name: String(name), value });
+    }
+    return decoded;
+  }
+
+  // Backward-compatible root-level encrypted/plain value.
+  try { return [{ name: "data", value: await decryptDeep(nodeValue) }]; }
+  catch (_) { return []; }
+}
+
+async function migrateAdminAuthSchema(authRef, snapValue) {
+  const entries = await readAuthNodeEntries(snapValue);
+  const target = entries.find((entry) => String(entry.name).trim().toLowerCase() === "data") || entries[0];
+  if (!target || target.value == null) return null;
+
+  // Store BOTH the logical name and key encrypted. The encrypted child key is
+  // randomised by AES-GCM, so reads enumerate/decrypt child names instead of
+  // assuming a deterministic Firebase child path.
+  const encryptedName = await encryptString("data");
+  const encryptedValue = await encryptString(String(target.value).trim());
+  const payload = { [encryptedName]: encryptedValue };
+  await set(authRef, payload);
+  return String(target.value).trim();
+}
+
+async function readAdminAuthKey() {
+  const { database } = await import("./firebaseconfig.js");
+  const { get, ref, set, remove } = await import("https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js");
+  const newRef = ref(database, ADMIN_AUTH_PATH);
+  const newSnap = await get(newRef);
+  if (newSnap.exists()) {
+    const entries = await readAuthNodeEntries(newSnap.val());
+    const target = entries.find((entry) => String(entry.name).trim().toLowerCase() === "data") || entries[0];
+    if (target?.value != null) {
+      // Transparently upgrade the old plaintext-name schema on first successful read.
+      const hasEncryptedName = Object.keys(newSnap.val() || {}).some((key) => key.startsWith("EV1."));
+      if (!hasEncryptedName && newSnap.val() && typeof newSnap.val() === "object" && !Array.isArray(newSnap.val())) {
+        try { await migrateAdminAuthSchema(newRef, newSnap.val()); } catch (e) { console.warn("Admin auth schema migration skipped:", e); }
+      }
+      return String(target.value).trim();
+    }
+  }
+
+  // One-time migration from the legacy location, now writing encrypted name + encrypted key.
+  const oldRef = ref(database, LEGACY_ADMIN_AUTH_PATH);
+  const oldSnap = await get(oldRef);
+  if (!oldSnap.exists()) return null;
+  const oldEntries = await readAuthNodeEntries(oldSnap.val());
+  const oldTarget = oldEntries.find((entry) => String(entry.name).trim().toLowerCase() === "data") || oldEntries[0];
+  if (oldTarget?.value == null) return null;
+  await migrateAdminAuthSchema(newRef, { data: oldTarget.value });
+  await remove(oldRef);
+  return String(oldTarget.value).trim();
+}
+
+async function refreshAllVenueExpiries() {
+  const { database } = await import("./firebaseconfig.js");
+  const { get, set, ref } = await import("https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js");
+  let changed = 0;
+
+  for (const path of VENUE_PATHS) {
+    const snap = await get(ref(database, path));
+    if (!snap.exists()) continue;
+    const raw = snap.val() || {};
+    const data = await decryptDeep(raw);
+    if (!data || typeof data !== "object") continue;
+
+    const entries = Object.entries(data);
+    const concurrency = 8;
+    for (let i = 0; i < entries.length; i += concurrency) {
+      await Promise.all(entries.slice(i, i + concurrency).map(async ([docId, record]) => {
+        if (!record || typeof record !== "object") return;
+        const next = normalizeVenueExpiry(record);
+        const oldExpire = String(record.expiredate ?? record.expireDate ?? "");
+        const oldCountdown = String(record.countdowndays ?? record.countdownDays ?? "");
+        if (String(next.expiredate ?? "") === oldExpire && String(next.countdowndays ?? "") === oldCountdown) return;
+        await set(ref(database, `${path}/${docId}`), await encryptDeep(next));
+        changed++;
+      }));
+    }
+    invalidateCached(path);
+  }
+  return changed;
+}
+
+async function setupAdminLogin() {
+  const form = document.getElementById("verifyForm");
+  const keyInput = document.getElementById("twoStepKey");
+  const messageEl = document.getElementById("message");
+  const verifyBtn = document.getElementById("verifyBtn");
+  const togglePass = document.getElementById("togglePass");
+  const overlay = document.getElementById("adminLoginOverlay");
+  if (!form || !keyInput || !verifyBtn || !overlay) return;
+
+  const setMessage = (text = "", type = "") => {
+    if (!messageEl) return;
+    messageEl.textContent = text;
+    messageEl.className = `admin-login-message ${type}`.trim();
+  };
+
+  togglePass?.addEventListener("click", () => {
+    const showing = keyInput.type === "text";
+    keyInput.type = showing ? "password" : "text";
+    togglePass.innerHTML = `<i class="fa-regular fa-eye${showing ? "" : "-slash"}"></i>`;
+    togglePass.setAttribute("aria-label", showing ? "Show authentication key" : "Hide authentication key");
+    togglePass.setAttribute("aria-pressed", String(!showing));
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const enteredKey = String(keyInput.value || "").trim();
+    if (!enteredKey || !/^\d+$/.test(enteredKey)) {
+      setMessage("Enter the numeric authentication key.", "error");
+      keyInput.focus();
+      return;
+    }
+
+    verifyBtn.disabled = true;
+    verifyBtn.classList.add("is-loading");
+    setMessage("Verifying secure access…");
+    try {
+      const expectedKey = await readAdminAuthKey();
+      if (!expectedKey) throw new Error("AUTH_KEY_MISSING");
+      if (enteredKey !== expectedKey) {
+        sessionStorage.removeItem("admin_verified");
+        sessionStorage.removeItem("twostepauthkey_hash");
+        setMessage("Incorrect authentication key.", "error");
+        keyInput.select();
+        return;
+      }
+
+      // Keep authentication only in memory. A browser refresh/direct revisit must ask for the key again.
+      window.__adminVerifiedThisLoad = true;
+
+      setMessage("Access verified. Updating venue expiry dates…", "success");
+      const updated = await refreshAllVenueExpiries();
+      setMessage(`${updated} venue expiry record${updated === 1 ? "" : "s"} refreshed. Opening dashboard…`, "success");
+      overlay.classList.remove("is-open");
+      overlay.setAttribute("aria-hidden", "true");
+      resetAdminIdleTimer();
+    } catch (error) {
+      console.error("Admin login error:", error);
+      setMessage(error?.message === "AUTH_KEY_MISSING" ? "Authentication service is not configured." : "Could not verify access. Check your Firebase connection.", "error");
+    } finally {
+      verifyBtn.disabled = false;
+      verifyBtn.classList.remove("is-loading");
+    }
+  });
 }
 const viewTitleByKey = {
   "banquet-management": "Banquet Management",
@@ -20,8 +237,8 @@ const viewHtmlByKey = {
     <h2>Banquet Record</h2>
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
       <div>
-        <label>UID</label>
-        <input id="banquet_uid" type="text" placeholder="e.g. 12345" style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);">
+        <label>UID <span style="color:var(--muted);font-size:11px;">(auto-generated)</span></label>
+        <input id="banquet_uid" type="text" placeholder="Auto-generated 6-digit UID" readonly aria-readonly="true" style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text); cursor:not-allowed; opacity:.82;">
         <input id="banquet_uid_key" type="hidden" value="">
       </div>
       <div style="border: 1px solid var(--primary); padding: 10px; border-radius: 8px;">
@@ -175,7 +392,7 @@ const viewHtmlByKey = {
   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
     <div>
       <label>UID</label>
-      <input id="hall_uid" type="text" placeholder="e.g. 12345" style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text);">
+      <input id="hall_uid" type="text" placeholder="Auto-generated 6-digit UID" readonly aria-readonly="true" style="width: 100%; padding: 8px; margin-top: 5px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.2); color: var(--text); cursor:not-allowed; opacity:.82;">
       <input id="hall_uid_key" type="hidden" value="">
     </div>
     <div style="border: 1px solid var(--primary); padding: 10px; border-radius: 8px;">
@@ -377,6 +594,15 @@ const viewHtmlByKey = {
 
 
 const navItems = Array.from(document.querySelectorAll(".nav__item"));
+const appLoadingOverlay = document.getElementById('appLoadingOverlay');
+function setAppLoading(show, text = 'Preparing your workspace and syncing the latest data…') {
+  if (!appLoadingOverlay) return;
+  const msg = appLoadingOverlay.querySelector('.app-loading-text');
+  if (msg) msg.textContent = text;
+  appLoadingOverlay.classList.toggle('is-visible', !!show);
+  appLoadingOverlay.setAttribute('aria-hidden', show ? 'false' : 'true');
+}
+
 const pageTitle = document.getElementById("pageTitle");
 const statusPill = document.getElementById("statusPill");
 const viewContainer = document.getElementById("viewContainer");
@@ -399,7 +625,7 @@ function renderView(key) {
   viewContainer.innerHTML = html;
 
   if (statusPill) {
-    statusPill.textContent = "Loaded";
+    statusPill.textContent = (key === 'banquet-spreadsheet' && hasCached('/banquet/unique_bank')) || (key === 'hall-spreadsheet' && hasCached('/hall/unique_hall')) ? 'Live' : 'Loading...';
   }
 
 // Naya Update: Banquet management view ke liye engine activate karein
@@ -418,6 +644,7 @@ function renderView(key) {
 
   if (key === "banquet-management") {
     initBanquetFileBrowseUx();
+    void prepareNewVenueUid('banquet');
 
     // Save/Update button: validation first
     const saveBtn = viewContainer.querySelector('button.a-btn[style*="background: var(--primary)"]');
@@ -469,15 +696,6 @@ function renderView(key) {
           // After user closes the popup (or taps OK), move to spreadsheet and refresh
           setActive('banquet-spreadsheet');
           renderView('banquet-spreadsheet');
-          loadBanquetSpreadsheetRows().catch((e) => console.error(e));
-
-
-          // After save, if user is on spreadsheet tab, refresh rows.
-
-          const activeNav = navItems.find((b) => b.classList.contains('is-active'));
-          if (activeNav?.dataset.view === 'banquet-spreadsheet') {
-            loadBanquetSpreadsheetRows().catch((e) => console.error(e));
-          }
         } catch (e) {
           console.error(e);
           if (pill) {
@@ -515,6 +733,7 @@ function renderView(key) {
 // Hall: validation + save/update wiring
   if (key === "hall-management") {
     initHallFileBrowseUx();
+    void prepareNewVenueUid('hall');
 
     const saveBtn = viewContainer.querySelector('button.a-btn[style*="background: var(--primary)"]');
     if (saveBtn && !saveBtn.dataset.boundHallSave) {
@@ -585,7 +804,6 @@ function renderView(key) {
     }
   }
 }
-
 
 function validateBanquetManagementForm() {
   const getEl = (id) => document.getElementById(id);
@@ -835,7 +1053,7 @@ function validateHallManagementForm() {
 
 
 
-function clearBanquetManagementForm() {
+function clearBanquetManagementForm(generateUid = true) {
   const setVal = (id, v) => {
     const el = document.getElementById(id);
     if (el) el.value = v ?? "";
@@ -844,12 +1062,12 @@ function clearBanquetManagementForm() {
   setVal("banquet_uid", "");
   setVal("banquet_uid_key", "");
 
-  // Clear pe UID wapas editable (and style reset)
   const uidEl = document.getElementById("banquet_uid");
   if (uidEl) {
-    uidEl.readOnly = false;
-    uidEl.style.cursor = "";
-    uidEl.style.opacity = "";
+    uidEl.readOnly = true;
+    uidEl.setAttribute("aria-readonly", "true");
+    uidEl.style.cursor = "not-allowed";
+    uidEl.style.opacity = "0.82";
   }
   setVal("banquet_vendor_user", "");
   setVal("banquet_vendor_pass", "");
@@ -903,6 +1121,8 @@ function clearBanquetManagementForm() {
     preview.textContent = "No Preview";
     preview.innerHTML = "No Preview";
   }
+
+  if (generateUid) void prepareNewVenueUid('banquet');
 }
 
 function setBanquetImgPreview(url) {
@@ -1177,6 +1397,45 @@ function computeCountdownDaysFromDates(startDateStr, expireDateStr) {
   return Number.isFinite(diffDays) ? String(diffDays) : '';
 }
 
+async function generateUniqueVenueUid(path) {
+  const data = await getCached(path);
+  const used = new Set();
+  for (const [key, record] of Object.entries(data || {})) {
+    used.add(String(key));
+    const uid = record?.UID ?? record?.uid ?? record?.hall_UID;
+    if (uid != null) used.add(String(uid));
+  }
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const candidate = String(Math.floor(100000 + Math.random() * 900000));
+    if (!used.has(candidate)) return candidate;
+  }
+  throw new Error("Could not generate a unique 6-digit UID.");
+}
+
+async function isVenueUidAvailable(path, candidate) {
+  const value = String(candidate || '').trim();
+  if (!/^\d{6}$/.test(value)) return false;
+  const data = await getCached(path);
+  for (const [key, record] of Object.entries(data || {})) {
+    if (String(key) === value) return false;
+    const uid = record?.UID ?? record?.uid ?? record?.hall_UID;
+    if (uid != null && String(uid) === value) return false;
+  }
+  return true;
+}
+
+async function prepareNewVenueUid(kind) {
+  const path = kind === 'hall' ? '/hall/unique_hall' : '/banquet/unique_bank';
+  const inputId = kind === 'hall' ? 'hall_uid' : 'banquet_uid';
+  const keyId = kind === 'hall' ? 'hall_uid_key' : 'banquet_uid_key';
+  const input = document.getElementById(inputId);
+  const key = document.getElementById(keyId);
+  if (!input || !key || String(key.value || '').trim()) return;
+  const uid = await generateUniqueVenueUid(path);
+  // Do not overwrite an edit that may have started while the async lookup was running.
+  if (!String(key.value || '').trim()) input.value = uid;
+}
+
 function getBanquetPayloadFromForm() {
   const getElVal = (id) => {
     const el = document.getElementById(id);
@@ -1267,11 +1526,21 @@ async function upsertBanquetRecord() {
 
   const formPayload = getBanquetPayloadFromForm();
 
+  // New records always receive a unique 6-digit UID; edit mode keeps the existing UID.
+  const existingKey = (document.getElementById('banquet_uid_key')?.value || '').trim();
+  if (!existingKey) {
+    const displayedUid = String(document.getElementById('banquet_uid')?.value || '').trim();
+    const generatedUid = await isVenueUidAvailable('/banquet/unique_bank', displayedUid)
+      ? displayedUid
+      : await generateUniqueVenueUid('/banquet/unique_bank');
+    const uidEl = document.getElementById('banquet_uid');
+    if (uidEl) uidEl.value = generatedUid;
+    formPayload.UID = generatedUid;
+  }
+
   // Hidden field (banquet_uid_key) ko priority dein taake edit mode mein path break na ho
   const uidKeyRaw = (document.getElementById('banquet_uid_key')?.value || '').trim();
   const uidRaw = (document.getElementById('banquet_uid')?.value || '').trim();
-  
-  // Agar edit mode hai to uidKeyRaw use hoga, agar new entry hai to uidRaw
   const recordKey = uidKeyRaw || uidRaw;
 
   if (!recordKey) {
@@ -1293,6 +1562,7 @@ async function upsertBanquetRecord() {
 
   // Sahi path par data set/update karein[cite: 3]
   await set(ref(database, recordPath), await encryptDeep(payloadToSave));
+  invalidateCached('banquet/unique_bank');
 
   // Return mode takay UI ko update ki success ka pata chale[cite: 3]
   return { mode: exists ? 'update' : 'create', path: recordPath, key: recordKey };
@@ -1300,7 +1570,7 @@ async function upsertBanquetRecord() {
 
 async function loadBanquetForEditingByPath(dataPath) {
   if (!dataPath) return;
-  clearBanquetManagementForm();
+  clearBanquetManagementForm(false);
 
   const { database } = await import("./firebaseconfig.js");
   const { get, ref } = await import(
@@ -1570,7 +1840,7 @@ function applyHallSpreadsheetFilters() {
 }
 
 
-async function clearHallManagementForm() {
+async function clearHallManagementForm(generateUid = true) {
   const setVal = (id, v) => {
     const el = document.getElementById(id);
     if (el) el.value = v ?? "";
@@ -1579,12 +1849,12 @@ async function clearHallManagementForm() {
   setVal("hall_uid", "");
   setVal("hall_uid_key", "");
 
-  // Re-enable UID
   const uidEl = document.getElementById("hall_uid");
   if (uidEl) {
-    uidEl.readOnly = false;
-    uidEl.style.cursor = "";
-    uidEl.style.opacity = "";
+    uidEl.readOnly = true;
+    uidEl.setAttribute("aria-readonly", "true");
+    uidEl.style.cursor = "not-allowed";
+    uidEl.style.opacity = "0.82";
   }
 
   setVal("hall_vendor_user", "");
@@ -1638,6 +1908,7 @@ async function clearHallManagementForm() {
     if (cb) cb.checked = false;
   });
 
+  if (generateUid) void prepareNewVenueUid('hall');
 }
 
 function setHallImgPreview(url) {
@@ -1656,7 +1927,7 @@ function setHallImgPreview(url) {
 
 async function loadHallForEditingByPath(dataPath) {
   if (!dataPath) return;
-  clearHallManagementForm();
+  clearHallManagementForm(false);
 
   // Ensure hall thumbnails UX is ready for re-render (dblclick/drag)
   try {
@@ -2068,6 +2339,18 @@ async function upsertHallRecord() {
 
   const formPayload = getHallPayloadFromForm();
 
+  const existingKey = String(document.getElementById('hall_uid_key')?.value || '').trim();
+  if (!existingKey) {
+    const displayedUid = String(document.getElementById('hall_uid')?.value || '').trim();
+    const generatedUid = await isVenueUidAvailable('/hall/unique_hall', displayedUid)
+      ? displayedUid
+      : await generateUniqueVenueUid('/hall/unique_hall');
+    const uidEl = document.getElementById('hall_uid');
+    if (uidEl) uidEl.value = generatedUid;
+    formPayload.UID = generatedUid;
+    formPayload.hall_UID = generatedUid;
+  }
+
   const uidKeyRaw = String(document.getElementById('hall_uid_key')?.value || '').trim();
   const uidRaw = String(document.getElementById('hall_uid')?.value || '').trim();
   const recordKey = uidKeyRaw || uidRaw;
@@ -2080,6 +2363,7 @@ async function upsertHallRecord() {
 
   const payloadToSave = { ...formPayload, UID: String(recordKey), hall_UID: String(recordKey) };
   await set(ref(database, recordPath), await encryptDeep(payloadToSave));
+  invalidateCached('hall/unique_hall');
 
   return { mode: exists ? 'update' : 'create', path: recordPath, key: recordKey };
 }
@@ -2090,27 +2374,24 @@ async function loadHallSpreadsheetRows() {
   const tbody = table.querySelector('tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = '';
-
-
-  const tr = document.createElement('tr');
-  const td = document.createElement('td');
-  // Colspan update: UID..Start Date..Status..Actions => 10 columns
-  td.colSpan = 10; 
-  td.style.padding = '12px';
-  td.style.color = 'var(--muted)';
-  td.textContent = 'Loading...';
-  tr.appendChild(td);
-  tbody.appendChild(tr);
+  const alreadyCached = hasCached('/hall/unique_hall');
+  if (!alreadyCached) {
+    tbody.innerHTML = '';
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 10;
+    td.style.padding = '12px';
+    td.style.color = 'var(--muted)';
+    td.innerHTML = '<span class="table-loading-dot"></span> Syncing live data…';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
 
   try {
-    const { database } = await import('./firebaseconfig.js');
-    const { get, ref } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
-
-    const snapToUse = await get(ref(database, 'hall/unique_hall'));
+    const uniqueHallObj = await getCached('/hall/unique_hall');
     tbody.innerHTML = '';
 
-    if (!snapToUse.exists()) {
+    if (!uniqueHallObj || !Object.keys(uniqueHallObj).length) {
       const emptyTr = document.createElement('tr');
       const emptyTd = document.createElement('td');
       emptyTd.colSpan = 9;
@@ -2122,7 +2403,6 @@ async function loadHallSpreadsheetRows() {
       return;
     }
 
-    const uniqueHallObj = await decryptDeep(snapToUse.val() || {});
     const rows = [];
 
     Object.entries(uniqueHallObj).forEach(([hallKey, hallVal]) => {
@@ -2226,6 +2506,7 @@ async function loadHallSpreadsheetRows() {
           const { database } = await import('./firebaseconfig.js');
           const { ref, remove } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
           await remove(ref(database, row.deletePath));
+          await deletePortfolioViewCounter({ portfolioType: 'hall', uid: row.UID });
           await loadHallSpreadsheetRows();
         });
       }
@@ -2248,28 +2529,24 @@ async function loadBanquetSpreadsheetRows() {
   const tbody = table.querySelector("tbody");
   if (!tbody) return;
 
-  tbody.innerHTML = "";
-
-  // Mark loading
-  const tr = document.createElement("tr");
-  const td = document.createElement("td");
-  td.colSpan = 9;
-  td.style.padding = "12px";
-  td.style.color = "var(--muted)";
-  td.textContent = "Loading...";
-  tr.appendChild(td);
-  tbody.appendChild(tr);
+  const alreadyCached = hasCached('/banquet/unique_bank');
+  if (!alreadyCached) {
+    tbody.innerHTML = "";
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 9;
+    td.style.padding = "12px";
+    td.style.color = "var(--muted)";
+    td.innerHTML = '<span class="table-loading-dot"></span> Syncing live data…';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  }
 
   try {
-    const { database } = await import("./firebaseconfig.js");
-    const { get, ref } = await import(
-      "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js"
-    );
-
-    const snapToUse = await get(ref(database, `banquet/unique_bank`));
+    const uniqueBankObj = await getCached('/banquet/unique_bank');
     tbody.innerHTML = "";
 
-    if (!snapToUse.exists()) {
+    if (!uniqueBankObj || !Object.keys(uniqueBankObj).length) {
       const emptyTr = document.createElement("tr");
       const emptyTd = document.createElement("td");
       emptyTd.colSpan = 9;
@@ -2281,7 +2558,6 @@ async function loadBanquetSpreadsheetRows() {
       return;
     }
 
-    const uniqueBankObj = await decryptDeep(snapToUse.val() || {});
     const rows = [];
     Object.entries(uniqueBankObj).forEach(([uidKey, uidVal]) => {
       if (!uidVal) return;
@@ -2398,6 +2674,7 @@ async function loadBanquetSpreadsheetRows() {
               "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js"
             );
             await remove(ref(database, row.deletePath));
+            await deletePortfolioViewCounter({ portfolioType: 'banquet', uid: row.UID });
             await loadBanquetSpreadsheetRows();
           } catch (e) {
             console.error(e);
@@ -2418,99 +2695,72 @@ async function init() {
   if (!navItems.length || !viewContainer) return;
 
 
-  // Protect dashboard refresh/direct access:
-  // if localStorage flag isn't set, show embedded login overlay.
-  const ok = window.localStorage.getItem("admin_verified") === "true";
+  // Protect every page load: authentication is intentionally NOT persisted.
+  // Refreshing admin_dashboard.html therefore always returns to the password prompt.
+  const ok = window.__adminVerifiedThisLoad === true;
   const overlay = document.getElementById("adminLoginOverlay");
-
-
-  // Extra protection: keep validating localStorage pass vs Firebase in background.
-  // If mismatch is detected, auto-logout.
-  const startRevalidation = async () => {
-    try {
-      const localPassHash = String(
-        window.localStorage.getItem("twostepauthkey_hash") || ""
-      ).trim();
-
-      // Fetch latest expected key from Firebase.
-      // (We use dynamic import so this dashboard JS still works if fetch isn't needed.)
-      const { database } = await import("./firebaseconfig.js");
-      const { get, ref } = await import(
-        "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js"
-      );
-      const snap = await get(ref(database, "banquet/twostepauthkey"));
-      const expectedKey = snap.exists() ? String(await decryptDeep(snap.val())).trim() : null;
-      const expectedHash = expectedKey ? await hashAdminKey(expectedKey) : "";
-
-      if (!expectedKey || !localPassHash || localPassHash !== expectedHash) {
-        try {
-          window.localStorage.removeItem("admin_verified");
-        } catch (e) {}
-        window.location.href = "./admin_login.html";
-      }
-    } catch (e) {
-      // Fail-closed: if we cannot validate, don't keep user logged in.
-      try {
-        window.localStorage.removeItem("admin_verified");
-      } catch (err) {}
-      window.location.href = "./admin_login.html";
-    }
-  };
-
-  // Run immediately + then every 60s.
-  if (ok) {
-    startRevalidation();
-    window.__adminRevalidateInterval = window.setInterval(
-      startRevalidation,
-      60000
-    );
-
-    // Remove auth key only after the revalidation window.
-    // (Earlier version used 5s which could look like auto-logout/redirect.)
-    window.setTimeout(() => {
-      try {
-        window.localStorage.removeItem("twostepauthkey_hash");
-      } catch (_) {}
-    }, 60000);
-
-
-    // Security/cleanup (handled above at 60s). Kept intentionally removed to avoid early redirect/logout.
-
-  }
-
-  if (!ok) {
-    try {
-      window.localStorage.removeItem("admin_verified");
-    } catch (e) {}
-
-    // Show embedded login overlay (dashboard content stays protected)
+  window.__showAdminLogin = () => {
+    if (adminIdleTimer) clearTimeout(adminIdleTimer);
+    adminIdleTimer = null;
+    window.__adminVerifiedThisLoad = false;
     if (overlay) {
       overlay.classList.add("is-open");
       overlay.setAttribute("aria-hidden", "false");
     }
-    return;
-  }
+  };
 
-  if (overlay) {
+  setupAdminLogin().catch((e) => console.error("Admin login setup failed:", e));
+  setupAdminIdleProtection();
+
+  if (!ok) {
+    if (overlay) {
+      overlay.classList.add("is-open");
+      overlay.setAttribute("aria-hidden", "false");
+    }
+  } else if (overlay) {
     overlay.classList.remove("is-open");
     overlay.setAttribute("aria-hidden", "true");
   }
 
+  // Migration runs in the background so the dashboard opens immediately.
+  void migrateExistingDatabaseEncryption().catch((migrationError) => {
+    console.error('[Event Vault] Encryption migration failed:', migrationError);
+  });
 
+  // Warm the three admin data sources once. Firebase onValue keeps them live;
+  // spreadsheet tabs reuse this decrypted cache instead of downloading again.
+  void Promise.all([
+    getCached('/banquet/unique_bank'),
+    getCached('/hall/unique_hall'),
+    getCached('/user/unique_user')
+  ]).catch((e) => console.error('[Event Vault] cache warm failed', e));
 
+  const scheduleLiveRefresh = (viewKey, loader) => {
+    let timer = null;
+    subscribeCached(viewKey, () => {
+      const active = navItems.find((b) => b.classList.contains('is-active'))?.dataset.view;
+      if (active !== (viewKey === '/banquet/unique_bank' ? 'banquet-spreadsheet' : viewKey === '/hall/unique_hall' ? 'hall-spreadsheet' : 'master-record')) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => loader().catch(console.error), 120);
+    });
+  };
+  scheduleLiveRefresh('/banquet/unique_bank', loadBanquetSpreadsheetRows);
+  scheduleLiveRefresh('/hall/unique_hall', loadHallSpreadsheetRows);
 
   const active = navItems.find((b) => b.classList.contains("is-active"));
   const initialKey = active?.dataset.view || navItems[0]?.dataset.view;
 
   if (initialKey) {
     setActive(initialKey);
+    // Render the dashboard shell immediately; data sources warm in the background.
+    // This avoids making the first paint wait on Firebase/decryption.
+    setAppLoading(false);
     renderView(initialKey);
 
-
-  if (initialKey === "banquet-spreadsheet") {
-      // don't block init; fire and forget
-      loadBanquetSpreadsheetRows().catch((e) => console.error(e));
-    }
+    if (initialKey === 'banquet-spreadsheet') await loadBanquetSpreadsheetRows().catch((e) => console.error(e));
+    if (initialKey === 'hall-spreadsheet') await loadHallSpreadsheetRows().catch((e) => console.error(e));
+    if (initialKey === 'master-record') await new Promise(r => setTimeout(r, 120));
+    setAppLoading(false);
   }
 
 
@@ -2542,13 +2792,7 @@ async function init() {
   const logoutBtn = document.getElementById("logoutBtn");
   if (logoutBtn) {
     logoutBtn.addEventListener("click", () => {
-      // Reset auth state stored in localStorage
-      try {
-        window.localStorage.removeItem("admin_verified");
-        window.localStorage.removeItem("twostepauthkey_hash");
-      } catch (_) {}
-
-      window.location.href = "./admin_login.html";
+      window.__showAdminLogin?.();
     });
   }
 }

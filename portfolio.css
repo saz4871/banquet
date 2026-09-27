@@ -27,3 +27,92 @@
 /* Keep the image control visually attached to the hero instead of colliding with the details card. */
 .content-wrapper{margin-top:18px}.hero-image-view-btn{bottom:24px}
 @media(max-width:720px){.content-wrapper{margin-top:16px}.hero-image-view-btn{bottom:22px}}
+
+/* Shared Event Vault loading screen — matches home.html */
+.loading-overlay{position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:rgba(7,9,13,.97);backdrop-filter:blur(16px);transition:opacity .28s ease,visibility .28s ease}
+.loading-overlay.hidden{display:none!important}
+.loading-card{text-align:center}
+.loader-ring{position:relative;width:58px;height:58px;margin:0 auto 18px;border:1px solid rgba(213,177,107,.18);border-radius:50%}
+.loader-ring:before{content:"";position:absolute;inset:8px;border:1px solid rgba(255,255,255,.06);border-radius:50%}
+.loader-ring span{position:absolute;inset:0;border:2px solid var(--gold);border-top-color:transparent;border-right-color:transparent;border-radius:50%;animation:spin .9s linear infinite}
+.loading-overline{color:#6e7682;font-size:8px;letter-spacing:.32em;font-weight:800}
+.loading-text{margin-top:8px;color:#d9dbe0;font-size:12px;font-weight:700}
+.loading-dots i{display:inline-block;width:4px;height:4px;margin-left:4px;border-radius:50%;background:var(--gold);animation:blink 1s infinite}
+.loading-dots i:nth-child(2){animation-delay:.15s}.loading-dots i:nth-child(3){animation-delay:.3s}
+@keyframes spin{to{transform:rotate(360deg)}}@keyframes blink{50%{opacity:.2}}
+body.is-loading{overflow:hidden}
+
+
+/* ===== Fast, smooth calendar polish ===== */
+.calendar-pane{position:relative;isolation:isolate;overflow:visible;background:linear-gradient(145deg,rgba(20,23,29,.98),rgba(11,13,17,.98));}
+.calendar-pane__header{padding-bottom:4px}
+.calendar-dd-btn{transition:transform .16s ease,border-color .16s ease,background .16s ease;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+.calendar-dd-btn:active{transform:scale(.985)}
+.calendar-dd-list{transform-origin:top right;animation:calendarDropIn .14s ease-out}
+.calendar-block{transition:opacity .16s ease,transform .16s ease;box-shadow:inset 0 1px rgba(255,255,255,.025)}
+.calendar-month__chev{transition:transform .14s ease,border-color .14s ease,background .14s ease}
+.calendar-month__chev:active{transform:scale(.92)}
+.calendar-month__label{min-width:92px;text-align:center}
+.calendar-days{contain:layout paint}
+.cal-day{appearance:none;-webkit-appearance:none;will-change:transform,border-color;background:linear-gradient(145deg,#202329,#191c21);box-shadow:inset 0 1px rgba(255,255,255,.025);transition:transform .12s ease,border-color .12s ease,background .12s ease,box-shadow .12s ease}
+.cal-day:hover:not(:disabled){background:#252830;border-color:rgba(213,180,116,.65);box-shadow:0 7px 18px rgba(0,0,0,.18)}
+.cal-day:focus-visible{outline:2px solid var(--gold2);outline-offset:2px}
+.cal-day.is-today{box-shadow:inset 0 0 0 1px rgba(240,211,154,.45),0 0 0 3px rgba(213,180,116,.07)}
+.cal-day.is-out{opacity:.18;pointer-events:none;background:transparent;border-color:rgba(255,255,255,.035)}
+.calendar-status-legend{margin-top:16px}
+@keyframes calendarDropIn{from{opacity:0;transform:translateY(-4px) scale(.99)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.calendar-dd-list,.cal-day,.calendar-month__chev{animation:none!important;transition:none!important}}
+
+/* Loader must be visible immediately while the portfolio module is loading. */
+.loading-overlay{display:grid!important;opacity:1;visibility:visible;transition:opacity .24s ease,visibility .24s ease}
+.loading-overlay.hidden{opacity:0;visibility:hidden;display:grid!important;pointer-events:none}
+.loading-card{transform:translateY(-4px);animation:loaderFloat .8s ease-out both}
+@keyframes loaderFloat{from{opacity:0;transform:translateY(7px) scale(.98)}to{opacity:1;transform:none}}
+
+/* ===== Live calendar status polish ===== */
+.cal-day.is-booked-by-other{position:relative;overflow:hidden;background:linear-gradient(145deg,rgba(232,189,89,.24),rgba(180,125,28,.12))!important;border-color:rgba(239,199,94,.82)!important;color:#ffd978!important;box-shadow:0 0 0 1px rgba(239,199,94,.08),0 8px 22px rgba(180,125,28,.10)}
+.cal-day.is-booked-by-other:after{content:"";position:absolute;inset:5px;border:1px solid rgba(255,220,126,.16);border-radius:7px;pointer-events:none}
+.cal-day.is-redmarked{background:linear-gradient(145deg,rgba(218,91,111,.28),rgba(125,38,54,.13))!important}
+.cal-day.is-redmarked,.cal-day.is-booked-by-other{animation:calendarStatusIn .2s ease-out}
+@keyframes calendarStatusIn{from{opacity:.55;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){.cal-day.is-redmarked,.cal-day.is-booked-by-other{animation:none}}
+
+
+/* YouTube cinematic pane */
+#cinematicBox{overflow:hidden;margin-top:2px}.video-wrapper{position:relative;width:100%;aspect-ratio:16/9;min-height:220px;overflow:hidden;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:#07090d;box-shadow:0 18px 45px rgba(0,0,0,.22)}.video-wrapper iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
+@media(max-width:720px){.video-wrapper{min-height:190px;border-radius:14px}}
+
+
+/* Premium booking modal polish */
+.modal-overlay{background:rgba(3,5,9,.82);backdrop-filter:blur(18px) saturate(125%);padding:20px}
+.modal-card{overflow:hidden;border:1px solid rgba(255,255,255,.14);border-radius:26px;background:linear-gradient(145deg,rgba(28,31,38,.98),rgba(13,15,20,.98));box-shadow:0 35px 100px rgba(0,0,0,.62),0 0 0 1px rgba(212,175,55,.06) inset}
+.modal-glow{background:radial-gradient(circle at 10% 0%,rgba(255,215,120,.16),transparent 34%),radial-gradient(circle at 100% 100%,rgba(120,160,255,.08),transparent 38%)}
+.modal-header{padding:22px 24px;border-bottom:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(255,255,255,.035),transparent)}
+.modal-icon{width:44px;height:44px;border:1px solid rgba(255,215,120,.18);background:linear-gradient(145deg,#292b31,#1b1d22);box-shadow:0 8px 25px rgba(0,0,0,.28)}
+.modal-header h2{letter-spacing:-.02em}
+.modal-subtitle{color:#9da2ab}
+.modal-close-x{width:38px;height:38px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(255,255,255,.055);color:#c9cbd0;transition:.2s ease}
+.modal-close-x:hover{transform:translateY(-1px) rotate(2deg);border-color:rgba(255,215,120,.38);background:rgba(255,215,120,.09);color:#fff}
+.event-type-options{padding:22px 24px;gap:12px}
+.event-type-btn{position:relative;min-height:78px;border:1px solid rgba(255,255,255,.09);border-radius:17px;background:linear-gradient(145deg,rgba(35,38,45,.95),rgba(23,25,30,.95));color:#eee;box-shadow:0 8px 24px rgba(0,0,0,.18);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease,background .2s ease}
+.event-type-btn:before{content:'';position:absolute;inset:0;border-radius:inherit;background:linear-gradient(135deg,rgba(255,215,120,.12),transparent 45%);opacity:0;transition:.2s ease;pointer-events:none}
+.event-type-btn:hover{transform:translateY(-2px);border-color:rgba(212,175,55,.48);background:linear-gradient(145deg,rgba(46,43,35,.98),rgba(25,27,32,.98));box-shadow:0 14px 30px rgba(0,0,0,.28),0 0 0 1px rgba(212,175,55,.08) inset}
+.event-type-btn:hover:before{opacity:1}
+.event-type-label{position:relative;z-index:1;letter-spacing:.01em}
+.event-time-options,.user-details-body,.confirmation-body{padding:24px}
+.event-time-select,.user-details-input{height:52px;border-color:rgba(255,255,255,.11);border-radius:14px;background:rgba(7,9,13,.72);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.modal-footer{padding:18px 24px;border-top:1px solid rgba(255,255,255,.07);background:rgba(0,0,0,.12)}
+.confirm-btn{min-height:46px;padding:0 22px;border-radius:13px;background:linear-gradient(135deg,#e6c77a,#b8955d);box-shadow:0 10px 25px rgba(184,149,93,.18);transition:.2s ease}
+.confirm-btn:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.confirmation-row{padding:13px 0;border-bottom-color:rgba(255,255,255,.07)}
+
+/* Image viewer: navigation controls sit at the bottom corners of the image container. */
+.hero-image-modal-card{overflow:hidden}
+.hero-image-modal-body{position:relative;padding:12px 20px 20px}
+.hero-image-modal-img{position:relative;z-index:1}
+.hero-image-nav{top:auto;bottom:32px;transform:none;width:50px;height:50px;border:1px solid rgba(255,255,255,.2);border-radius:15px;background:rgba(8,10,14,.78);backdrop-filter:blur(12px);box-shadow:0 12px 30px rgba(0,0,0,.42);transition:.2s ease}
+.hero-image-nav--prev{left:34px}.hero-image-nav--next{right:34px}
+.hero-image-nav:hover{transform:translateY(-2px);border-color:rgba(255,215,120,.5);background:rgba(20,21,25,.9);color:#ffe39a}
+.hero-image-modal-toolbar{position:absolute;inset:0 0 auto;height:58px;z-index:5}
+.hero-image-modal-toolbar .modal-close-x{top:10px;right:16px}
+@media (max-width:600px){.modal-overlay{padding:10px}.modal-card{border-radius:21px}.modal-header{padding:18px}.event-type-options{padding:18px;gap:10px}.event-type-btn{min-height:68px}.event-time-options,.user-details-body,.confirmation-body{padding:18px}.hero-image-modal-body{padding:8px}.hero-image-nav{bottom:20px;width:44px;height:44px}.hero-image-nav--prev{left:18px}.hero-image-nav--next{right:18px}}

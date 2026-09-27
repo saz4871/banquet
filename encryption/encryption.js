@@ -120,6 +120,27 @@ export async function decryptDeep(value) {
   }
   return value;
 }
+
+// Deterministic protected Firebase path key.
+// Firebase child names cannot contain "/" and must be known before a read/write,
+// so IDs used as structural keys are represented by a keyed SHA-256 digest.
+// This is not reversible encryption; the actual UID/date remains encrypted
+// inside the record value. It prevents raw UID/date values from being exposed
+// as Firebase path names.
+export async function stablePathKey(value, namespace = "default") {
+  const secret = getSecret();
+  const material = textEncoder.encode(`${namespace}\u0000${String(value)}`);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    textEncoder.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, material));
+  return b64url(digest);
+}
+
 export async function secureSet(firebaseSet, dbRef, value) {
   return firebaseSet(dbRef, await encryptDeep(value));
 }

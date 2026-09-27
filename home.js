@@ -61,8 +61,6 @@ function collectTextForSearch(item) {
     item.tag,
     item.phone,
     item.whatsapp,
-    item.vendor_user,
-    item.vendor_pass,
     item.detail,
     item.specialisation,
     item.specialization,
@@ -100,13 +98,13 @@ function escapeHtml(s) {
 }
 
 gridEl.addEventListener('click', (event) => {
-  const card = event.target.closest('.card[data-uid]');
+  const card = event.target.closest('.venue-tile[data-uid]');
   if (card) openDetails(card.dataset.uid);
 });
 
 gridEl.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' && event.key !== ' ') return;
-  const card = event.target.closest('.card[data-uid]');
+  const card = event.target.closest('.venue-tile[data-uid]');
   if (!card) return;
   event.preventDefault();
   openDetails(card.dataset.uid);
@@ -119,15 +117,15 @@ function render(list) {
   if (!list.length) return;
 
   const fragment = document.createDocumentFragment();
-  list.forEach((item) => {
-    const card = document.createElement('article');
-    card.className = 'card card--ready';
-    card.setAttribute('role', 'button');
-    card.setAttribute('tabindex', '0');
-    card.setAttribute('aria-label', `Open ${homeMode} ${item.title || item.uid}`);
-    card.dataset.uid = item.uid;
-
+  list.forEach((item, index) => {
+    const tile = document.createElement('article');
+    tile.className = 'venue-tile';
+    tile.setAttribute('role', 'button');
+    tile.setAttribute('tabindex', '0');
     const title = item.title || item.bankname || item.name || item.hallTitle || item.hallName || item.hallname || item.uid;
+    tile.setAttribute('aria-label', `Open ${homeMode} ${title}`);
+    tile.dataset.uid = item.uid;
+
     const location = homeMode === 'banquets'
       ? (item.locationText || item.location || item.bankloctext || item.Location || '')
       : (item.hallLocationText || item.hallloctext || item.hallLocation || item.locationText || item.location || '');
@@ -137,22 +135,25 @@ function render(list) {
     const capacity = item.capacity || item.Capacity || item.people_capacity || item.peopleCapacity || item.people || item.capacityText || '—';
     const cover = pickCover(item);
 
-    card.innerHTML = `
-      <div class="img-container">
-        ${cover ? `<img src="${escapeHtml(cover)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<div class="no-image"><i class="fa-regular fa-image"></i><span>Venue image unavailable</span></div>`}
-        <div class="luxury-badge"><i class="fa-solid fa-gem"></i> Premium Venue</div>
+    tile.innerHTML = `
+      <div class="venue-tile__media">
+        ${cover ? `<img src="${escapeHtml(cover)}" alt="${escapeHtml(title)}" loading="${index < 3 ? 'eager' : 'lazy'}" fetchpriority="${index < 3 ? 'high' : 'auto'}" decoding="async">` : `<div class="venue-tile__no-image"><i class="fa-regular fa-image"></i></div>`}
+        <div class="venue-tile__shade"></div>
+        <div class="venue-tile__index">${String(index + 1).padStart(2, '0')}</div>
+        <div class="venue-tile__type"><i class="fa-solid ${homeMode === 'banquets' ? 'fa-champagne-glasses' : 'fa-building-columns'}"></i>${homeMode === 'banquets' ? 'BANQUET' : 'HALL'}</div>
       </div>
-      <div class="card-body">
-        <h3 class="card-title">${escapeHtml(title)}</h3>
-        <div class="card-location"><i class="fa-solid fa-location-dot"></i><span>${escapeHtml(String(location).trim() || 'Location available on details')}</span></div>
-        <div class="card-stats">
-          <div class="stat"><span>Standard Rate</span><strong>${escapeHtml(formatRs(priceRaw))}</strong></div>
-          <div class="stat"><span>Capacity</span><strong>${escapeHtml(String(capacity).trim())} <small>people</small></strong></div>
+      <div class="venue-tile__content">
+        <div class="venue-tile__eyebrow">PRIVATE VENUE</div>
+        <h3>${escapeHtml(title)}</h3>
+        <div class="venue-tile__location"><i class="fa-solid fa-location-dot"></i><span>${escapeHtml(String(location).trim() || 'Location available on details')}</span></div>
+        <div class="venue-tile__meta">
+          <span><small>FROM</small><b>${escapeHtml(formatRs(priceRaw))}</b></span>
+          <span><small>CAPACITY</small><b>${escapeHtml(String(capacity).trim())} <em>people</em></b></span>
         </div>
+        <div class="venue-tile__action"><span>View portfolio</span><i class="fa-solid fa-arrow-up-right-from-square"></i></div>
       </div>
-      <div class="card-cta"><span>Explore venue</span><i class="fa-solid fa-arrow-right"></i></div>
     `;
-    fragment.appendChild(card);
+    fragment.appendChild(tile);
   });
   gridEl.appendChild(fragment);
 }
@@ -218,19 +219,27 @@ function openDetails(uid) {
 }
 
 
-async function loadData(path) {
+async function fetchFreshData(path) {
   const snapshot = await get(ref(database, path));
   const data = await decryptDeep(snapshot.val() || {});
   const list = [];
   const now = new Date();
-
   for (const k of Object.keys(data)) {
     const it = data[k] || {};
     if (remainingDays(normalizeDate(it.startdate || it.startDate), now, MAX_DAYS) > 0) {
       list.push({ ...it, uid: it.UID ?? k });
     }
   }
+  if (path === 'banquet/unique_bank') allBanquets = list;
+  if (path === 'hall/unique_hall') allHalls = list;
+  if (document.readyState !== 'loading' && (path === 'banquet/unique_bank' || path === 'hall/unique_hall')) {
+    try { applySearch(); } catch (_) {}
+  }
   return list;
+}
+
+async function loadData(path) {
+  return fetchFreshData(path);
 }
 
 const loadingOverlayEl = document.getElementById('loadingOverlay');

@@ -2,10 +2,156 @@
 // Browser-side only.
 
 import { database } from "./firebaseconfig.js";
-import { decryptDeep, encryptDeep } from "./encryption/encryption.js";
-import { ref, get, set } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
-let portfolioRedMarkedDates = new Set();
+import { decryptDeep, encryptDeep, stablePathKey } from "./encryption/encryption.js";
+import { recordPortfolioView } from "./view_tracker.js";
+import { ref, get, set, onValue } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
+// Calendar data is loaded once per portfolio visit and then rendered locally.
+// This keeps month navigation/time switching instant instead of re-reading Firebase.
+let calendarDataCache = null;
+let calendarDataCacheKey = '';
+let calendarDataRefreshPromise = null;
+
+function normalizeCalendarIso(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const m = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : value;
+}
+
+let calendarRealtimeUnsubs = [];
+let calendarRealtimeKey = '';
+
+function emptyCalendarData() {
+  return {
+    bookedByTime: { Morning: new Set(), Evening: new Set(), Night: new Set() },
+    approvedByTime: { Morning: new Set(), Evening: new Set(), Night: new Set() },
+    redByTime: { Morning: new Set(), Evening: new Set(), Night: new Set() }
+  };
+}
+
+async function buildCalendarDataFromSnapshots(userValue, redValue) {
+  const data = emptyCalendarData();
+  const all = userValue ? (await decryptDeep(userValue || {})) : {};
+
+  for (const k of Object.keys(all || {})) {
+    const it = all[k] || {};
+    const dbVenueId = it.venueId ?? it.venueID;
+    const portfolioType = getSavedPortfolioType();
+    const currentUid = portfolioType === 'hall' ? getSavedHallUid() : getSavedBanquetUid();
+    if (dbVenueId && currentUid && String(dbVenueId) !== String(currentUid)) continue;
+
+    const time = String(it.event_time || it.eventTime || '').trim();
+    const bucket = Object.keys(data.bookedByTime).find(x => x.toLowerCase() === time.toLowerCase());
+    if (!bucket) continue;
+
+    const date = normalizeCalendarIso(it.targetdate ?? it.targetDate ?? it.date);
+    if (!date) continue;
+
+    const status = String(it.status || it.bookingStatus || '').trim().toLowerCase();
+
+    // Pending/awaiting stays yellow. Approved becomes reserved/red.
+    // Denied/rejected is deliberately not added to either set, so it becomes available immediately.
+    if (status === 'approved' || status.includes('approved')) {
+      data.approvedByTime[bucket].add(date);
+    } else if (
+      status === 'pending' || status === 'awaiting' || status.includes('pending') ||
+      status === 'requested' || status.includes('awaiting')
+    ) {
+      data.bookedByTime[bucket].add(date);
+    }
+  }
+
+  const redData = redValue ? (await decryptDeep(redValue || {})) : {};
+  Object.values(redData || {}).forEach(v => {
+    if (!v?.reddate) return;
+    const parts = String(v.reddate).split('|');
+    const date = normalizeCalendarIso(parts[0]);
+    const time = String(parts[1] || '').trim();
+    const bucket = Object.keys(data.redByTime).find(x => x.toLowerCase() === time.toLowerCase());
+    if (date && bucket) data.redByTime[bucket].add(date);
+  });
+
+  return data;
+}
+
+function renderVisibleCalendarImmediately() {
+  const active = localStorage.getItem('eventTime') || localStorage.getItem('selectedEventTime') || 'Morning';
+  renderCalendarFor(active).catch(() => {});
+}
+
+async function attachCalendarRealtimeListeners(uid) {
+  const portfolioType = getSavedPortfolioType();
+  const listenerKey = `${portfolioType}:${uid || ''}`;
+  if (!uid || calendarRealtimeKey === listenerKey && calendarRealtimeUnsubs.length) return;
+
+  calendarRealtimeUnsubs.forEach(fn => { try { fn(); } catch (_) {} });
+  calendarRealtimeUnsubs = [];
+  calendarRealtimeKey = listenerKey;
+
+  const userRef = ref(database, 'user/unique_user');
+  const redKey = await stablePathKey(uid, 'redmark-owner');
+  const redRef = ref(database, `/redmarkdates/unique_redmark/${redKey}`);
+
+  const refreshFromLive = async (userValue, redValue) => {
+    try {
+      calendarDataCache = await buildCalendarDataFromSnapshots(userValue, redValue);
+      calendarDataCacheKey = listenerKey;
+      renderVisibleCalendarImmediately();
+    } catch (error) {
+      console.warn('Live calendar sync failed:', error);
+    }
+  };
+
+  let latestUser = null;
+  let latestRed = null;
+  let userReady = false;
+  let redReady = false;
+  const flush = () => {
+    if (userReady && redReady) refreshFromLive(latestUser, latestRed);
+  };
+
+  calendarRealtimeUnsubs.push(onValue(userRef, snap => {
+    latestUser = snap.exists() ? snap.val() : {};
+    userReady = true;
+    flush();
+  }, err => console.warn('Calendar user realtime error:', err)));
+
+  calendarRealtimeUnsubs.push(onValue(redRef, snap => {
+    latestRed = snap.exists() ? snap.val() : {};
+    redReady = true;
+    flush();
+  }, err => console.warn('Calendar red-date realtime error:', err)));
+}
+
+async function loadCalendarData(force = false) {
+  const portfolioType = getSavedPortfolioType();
+  const uid = portfolioType === 'hall' ? getSavedHallUid() : getSavedBanquetUid();
+  const cacheKey = `${portfolioType}:${uid || ''}`;
+  if (!uid) return emptyCalendarData();
+  if (!force && calendarDataCache && calendarDataCacheKey === cacheKey) return calendarDataCache;
+  if (!force && calendarDataRefreshPromise && calendarDataCacheKey === cacheKey) return calendarDataRefreshPromise;
+
+  calendarDataCacheKey = cacheKey;
+  calendarDataRefreshPromise = (async () => {
+    const [userSnap, redSnap] = await Promise.all([
+      get(ref(database, 'user/unique_user')),
+      stablePathKey(uid, 'redmark-owner').then(key => get(ref(database, `/redmarkdates/unique_redmark/${key}`)))
+    ]);
+
+    calendarDataCache = await buildCalendarDataFromSnapshots(
+      userSnap.exists() ? userSnap.val() : {},
+      redSnap.exists() ? redSnap.val() : {}
+    );
+
+    // Keep the open portfolio synced without page refresh.
+    await attachCalendarRealtimeListeners(uid);
+    return calendarDataCache;
+  })().finally(() => { calendarDataRefreshPromise = null; });
+
+  return calendarDataRefreshPromise;
+}
 function getSavedBanquetUid() {
   try {
     return localStorage.getItem('selectedBanquetUid');
@@ -29,31 +175,6 @@ function getSavedPortfolioType() {
     return 'banquet';
   }
 }
-
-async function syncRedMarkedDates() {
-    const portfolioType = getSavedPortfolioType();
-    const uid = portfolioType === 'hall' ? getSavedHallUid() : getSavedBanquetUid();
-    if (!uid) return;
-    
-    try {
-        const rmRef = ref(database, `/redmarkdates/unique_redmark/${uid}`);
-        const snap = await get(rmRef);
-        const data = snap.exists() ? (await decryptDeep(snap.val() || {})) : {};
-        
-        portfolioRedMarkedDates.clear();
-        Object.values(data).forEach(v => {
-            if (v?.reddate) {
-                // reddate format "DD/MM/YYYY|CalendarType" ko extract karein
-                const datePart = v.reddate.split('|')[0];
-                const [dd, mm, yyyy] = datePart.split('/');
-                portfolioRedMarkedDates.add(`${yyyy}-${mm}-${dd}`);
-            }
-        });
-    } catch (e) {
-        console.error("Red mark sync failed:", e);
-    }
-}
-
 
 function safeText(v) {
   return v === undefined || v === null ? '' : String(v);
@@ -116,54 +237,40 @@ function formatPrice(v) {
 function toEmbedUrl(videoUrl) {
   const raw = safeText(videoUrl).trim();
   if (!raw) return '';
-
-  // Goal: ytlink ko aise iframe src me convert karein ke content reliably play ho.
-  // DB me aksar watch?v= wala link aata hai; isay embed format me convert karna safe hai.
-  // (User feedback: previous embed logic fail na kare—embed link banate hi play hota hai.)
-  if (raw.includes('youtube.com/embed/')) {
-    return raw;
+  const iframeSrc = raw.match(/<iframe[^>]+src=["\']([^"\']+)["\']/i)?.[1];
+  const candidate = iframeSrc ? iframeSrc.trim() : raw;
+  if (!candidate) return '';
+  if (/youtube(?:-nocookie)?\.com\/embed\//i.test(candidate)) {
+    return candidate.includes('?') ? candidate : `${candidate}?rel=0&vq=hd1080`;
   }
-
-  // watch link: extract video id
-  if (raw.includes('watch?v=')) {
-    const id = raw.split('watch?v=')[1].split('&')[0];
-    if (id) {
-      // Force max quality if available.
-      // Note: YouTube may still override based on network/device.
-      return `https://www.youtube.com/embed/${id}?vq=hd1080&rel=0`;
-    }
-    return raw;
-  }
-
-  // youtu.be link
-  if (raw.includes('youtu.be/')) {
-    const id = raw.split('youtu.be/')[1].split('?')[0];
-    if (id) {
-      return `https://www.youtube.com/embed/${id}?vq=hd1080&rel=0`;
-    }
-    return raw;
-  }
-
-  // Agar already koi other embeddable/URL ho to as-is return
-  return raw;
+  const watchMatch = candidate.match(/[?&]v=([^&\s]+)/i);
+  if (watchMatch?.[1]) return `https://www.youtube.com/embed/${watchMatch[1]}?rel=0&vq=hd1080`;
+  const shortMatch = candidate.match(/youtu\.be\/([^?&#/]+)/i);
+  if (shortMatch?.[1]) return `https://www.youtube.com/embed/${shortMatch[1]}?rel=0&vq=hd1080`;
+  const shortsMatch = candidate.match(/youtube\.com\/shorts\/([^?&#/]+)/i);
+  if (shortsMatch?.[1]) return `https://www.youtube.com/embed/${shortsMatch[1]}?rel=0&vq=hd1080`;
+  return candidate;
 }
 
 
-
-
-async function fetchBanquetByUid(uid) {
+async function fetchVenueByUid(portfolioType, uid) {
   if (!uid) return null;
 
-  const snapshot = await get(ref(database, 'banquet/unique_bank'));
-  const data = await decryptDeep(snapshot.val() || {});
+  const collectionPath = portfolioType === 'hall' ? 'hall/unique_hall' : 'banquet/unique_bank';
+  const directSnapshot = await get(ref(database, `${collectionPath}/${uid}`));
 
-  // match by either it.UID or key itself
-  for (const k of Object.keys(data)) {
-    const it = data[k] || {};
-    const itUid = it.UID ?? k;
-    if (String(itUid) === String(uid)) {
-      return { ...it, uid: itUid };
-    }
+  if (directSnapshot.exists()) {
+    const record = await decryptDeep(directSnapshot.val());
+    return record && typeof record === 'object' ? { ...record, uid } : null;
+  }
+
+  // Legacy fallback: older records may have a different Firebase child key.
+  const snapshot = await get(ref(database, collectionPath));
+  const data = await decryptDeep(snapshot.val() || {});
+  for (const [key, record] of Object.entries(data)) {
+    const item = record || {};
+    const recordUid = item.UID ?? item.hall_UID ?? key;
+    if (String(recordUid) === String(uid)) return { ...item, uid: recordUid };
   }
 
   return null;
@@ -174,48 +281,18 @@ export async function initPortfolio() {
   const banquetUid = getSavedBanquetUid();
   const hallUid = getSavedHallUid();
 
-  // ---- Views increment (10 sec open) ----
-  // Requirement: agar banquet/hall page 10 seconds se zyada open rahe,
-  // to us asset ke "views" column ko +1 karo.
-  // Anti-multiple-increment (same browser) ke liye localStorage guard.
+  // Count one qualified view when the visitor stays on this portfolio for 5 seconds.
+  // Every new portfolio visit gets its own chance to count, including repeated visits
+  // from the same device. The counter itself is transaction-based to avoid lost updates.
   const uidToUseForViews = portfolioType === 'hall' ? hallUid : banquetUid;
   if (uidToUseForViews) {
-    const storageKey = `views_incr_done_${portfolioType}_${uidToUseForViews}`;
-    try {
-      if (!localStorage.getItem(storageKey)) {
-        setTimeout(() => {
-          try {
-            // If already marked in meantime, skip.
-            if (localStorage.getItem(storageKey)) return;
-            localStorage.setItem(storageKey, '1');
-
-            const assetPath =
-              portfolioType === 'hall'
-                ? `hall/unique_hall/${uidToUseForViews}`
-                : `banquet/unique_bank/${uidToUseForViews}`;
-
-            // Increment safely: get current value then set (simpler; if you want strict atomic increment use server transaction)
-            import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js')
-              .then(async ({ ref, get, set }) => {
-                const assetRef = ref(database, assetPath);
-                const snap = await get(assetRef);
-                const data = await decryptDeep(snap.val() || {});
-                const curViews = Number(data.views ?? data.Views ?? 0) || 0;
-                await set(assetRef, await encryptDeep({ ...data, views: curViews + 1 }));
-              })
-              .catch(() => {
-                // no-op
-              });
-          } catch (e) {
-            // ignore
-          }
-        }, 10000);
-      }
-    } catch (e) {
-      // ignore
-    }
+    window.setTimeout(() => {
+      void recordPortfolioView({
+        portfolioType,
+        uid: uidToUseForViews,
+      }).catch(() => {});
+    }, 5000);
   }
-
 
   // UI refs
   const heroTitleEl = document.getElementById('heroTitle');
@@ -248,22 +325,8 @@ export async function initPortfolio() {
 
   let asset = null;
   try {
-    if (portfolioType === 'hall') {
-      // fetch hall record from hall/unique_hall
-      const snapshot = await get(ref(database, 'hall/unique_hall'));
-      const data = await decryptDeep(snapshot.val() || {});
-      for (const k of Object.keys(data)) {
-        const it = data[k] || {};
-        const itUid = it.UID ?? it.hall_UID ?? k;
-        if (String(itUid) === String(uidToUse)) {
-          asset = { ...it, uid: itUid };
-          break;
-        }
-      }
-    } else {
-      asset = await fetchBanquetByUid(uidToUse);
-    }
-  } catch (e) {
+    asset = await fetchVenueByUid(portfolioType, uidToUse);
+  } catch (_) {
     asset = null;
   }
 
@@ -461,18 +524,27 @@ export async function initPortfolio() {
 
   // Render images behind hero text (fields: img, img1, img2, img3, img4)
   if (heroBgGalleryEl) {
-    const rawImgs = [asset.img, asset.img1, asset.img2, asset.img3, asset.img4];
-    const imgs = rawImgs
-      .map((x) => safeText(x).trim())
-      .filter((x) => x);
+    const galleryCandidates = [
+      asset.gallery, asset.images, asset.imgs, asset.cover_gallery, asset.coverGallery,
+      asset.imagesStack, asset.imageGallery, asset.galleryImages
+    ];
+    const arrayImgs = galleryCandidates.flatMap((v) => Array.isArray(v) ? v : []);
+    const rawImgs = [
+      asset.img, asset.img1, asset.img2, asset.img3, asset.img4,
+      asset.image, asset.image1, asset.image2, asset.image3, asset.image4,
+      asset.cover, asset.coverImage, ...arrayImgs
+    ];
+    const imgs = Array.from(new Set(rawImgs.map((x) => safeText(x).trim()).filter(Boolean)));
 
     heroBgGalleryEl.innerHTML = '';
 
     if (imgs.length) {
-      imgs.forEach((src) => {
+      imgs.forEach((src, i) => {
         const el = document.createElement('img');
         el.className = 'hero-bg-img';
-        el.loading = 'lazy';
+        el.loading = i === 0 ? 'eager' : 'lazy';
+        if (i === 0) el.fetchPriority = 'high';
+        el.decoding = 'async';
         el.alt = portfolioType === 'hall' ? 'Hall image' : 'Banquet image';
         el.src = src;
         heroBgGalleryEl.appendChild(el);
@@ -653,7 +725,11 @@ export async function initPortfolio() {
   // Cinematic (YouTube video wala section)
   // DB column: ytlink (Banquet + Hall dono me expected)
   if (cinematicBox && videoIframe) {
-    const videoUrlFromDb = safeText(asset.ytlink || asset.YTlink || asset.ytLink || asset.video || '');
+    const videoUrlFromDb = safeText(
+      asset.ytlink || asset.YTlink || asset.ytLink || asset.youtube || asset.youtubeLink ||
+      asset.youtube_embeded_link || asset.youtubeEmbeddedLink || asset.youtube_embedded_link ||
+      asset.youtubeEmbedded || asset.youtubeUrl || asset.video || asset.videourl || ''
+    );
     const embedUrl = toEmbedUrl(videoUrlFromDb);
 
     if (embedUrl) {
@@ -682,14 +758,6 @@ function setSavedEventTime(v) {
 }
 
 
-function openEventTimeModal() {
-
-  const overlay = document.getElementById('eventTimeModalOverlay');
-  if (!overlay) return;
-  overlay.style.display = 'flex';
-  overlay.setAttribute('aria-hidden', 'false');
-}
-
 function closeEventTimeModal() {
   const overlay = document.getElementById('eventTimeModalOverlay');
   if (!overlay) return;
@@ -703,13 +771,6 @@ const __calendarStateByType = {
   Evening: null,
   Night: null,
 };
-
-function monthKeyForState(d) {
-  if (!d) return '';
-  const yy = d.getFullYear();
-  const mm = d.getMonth();
-  return `${yy}-${mm}`;
-}
 
 function getMonthState(calendarType) {
   if (__calendarStateByType[calendarType]) return __calendarStateByType[calendarType];
@@ -735,72 +796,17 @@ function formatMonthYear(d) {
 async function renderCalendarFor(calendarType) {
   const block = document.querySelector(`.calendar-block[data-calendar="${calendarType}"]`);
   if (!block) return;
-
   const daysContainer = block.querySelector('[data-calendar-grid] .calendar-days');
   if (!daysContainer) return;
 
-  let bookedSet = new Set();
-  let approvedSet = new Set();
-  let redMarkedSet = new Set(); // Naya Set Red Marks ke liye
-
-  try {
-    const savedPortfolioType = getSavedPortfolioType();
-    const selectedAssetUid = savedPortfolioType === 'hall' ? getSavedHallUid() : getSavedBanquetUid();
-
-    if (selectedAssetUid) {
-      // 1. Existing Booked/Approved Data
-      const snap = await get(ref(database, 'user/unique_user'));
-      const all = snap.exists() ? (await decryptDeep(snap.val() || {})) : {};
-
-      for (const k of Object.keys(all)) {
-        const it = all[k] || {};
-        const dbVenueId = it.venueId ?? it.venueID;
-        if (dbVenueId && String(dbVenueId) !== String(selectedAssetUid)) continue;
-        if (!it.status || !it.event_time) continue;
-
-        const dbEventTime = String(it.event_time).trim().toLowerCase();
-        if (dbEventTime !== String(calendarType).trim().toLowerCase()) continue;
-
-        const tdRaw = it.targetdate ? String(it.targetdate).trim() : '';
-        if (!tdRaw) continue;
-
-        let tdIso = tdRaw;
-        const dmMatch = tdRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        if (dmMatch) tdIso = `${dmMatch[3]}-${dmMatch[2]}-${dmMatch[1]}`;
-        
-        const statusLower = String(it.status).trim().toLowerCase();
-        if (statusLower === 'pending' || statusLower === 'awaiting' || statusLower.includes('pending')) bookedSet.add(tdIso);
-        else if (statusLower === 'approved' || statusLower.includes('approved')) approvedSet.add(tdIso);
-      }
-
-      // 2. Naya: Vendor Red Marks Fetch
-      // reddate format: "DD/MM/YYYY|CalendarType"
-      const rmSnap = await get(ref(database, `/redmarkdates/unique_redmark/${selectedAssetUid}`));
-      const rmData = rmSnap.exists() ? (await decryptDeep(rmSnap.val() || {})) : {};
-      Object.values(rmData).forEach(v => {
-          if (v?.reddate) {
-              const parts = String(v.reddate).split('|');
-              const datePart = parts[0];
-              const calPart = (parts[1] || '').trim();
-
-              // Only mark red for the currently rendered calendarType
-              if (String(calPart).trim().toLowerCase() !== String(calendarType).trim().toLowerCase()) {
-                return;
-              }
-
-              const [dd, mm, yyyy] = datePart.split('/');
-              if (dd && mm && yyyy) redMarkedSet.add(`${yyyy}-${mm}-${dd}`);
-          }
-      });
-    }
-  } catch (e) {
-    console.warn('Failed to fetch calendar data:', e);
-  }
+  const data = await loadCalendarData(false);
+  const bookedSet = data.bookedByTime[calendarType] || new Set();
+  const approvedSet = data.approvedByTime[calendarType] || new Set();
+  const redMarkedSet = data.redByTime[calendarType] || new Set();
 
   const monthState = getMonthState(calendarType);
   const year = monthState.getFullYear();
   const month = monthState.getMonth();
-
   const monthLabelEl = block.querySelector('[data-calendar-month-label]');
   if (monthLabelEl) monthLabelEl.textContent = formatMonthYear(monthState);
 
@@ -814,74 +820,59 @@ async function renderCalendarFor(calendarType) {
   const firstWeekday = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const todayKey = toLocalISODate(new Date());
+  const fragment = document.createDocumentFragment();
 
-  daysContainer.innerHTML = '';
-
-  // Loop ke andar ka code yahan se replace karein:
-for (let cell = 0; cell < 42; cell++) {
+  for (let cell = 0; cell < 42; cell++) {
     const dayNumber = cell - firstWeekday + 1;
     const isOut = dayNumber < 1 || dayNumber > daysInMonth;
-    const dayBtn = document.createElement('div');
+    const dayBtn = document.createElement('button');
+    dayBtn.type = 'button';
     dayBtn.className = 'cal-day';
     if (isOut) dayBtn.classList.add('is-out');
+    if (isOut) {
+      dayBtn.disabled = true;
+      fragment.appendChild(dayBtn);
+      continue;
+    }
 
-    if (!isOut) {
-        // Sirf EK BAAR declare karein
-        const isoStr = toLocalISODate(new Date(year, month, dayNumber));
-        
-        dayBtn.textContent = String(dayNumber);
-        if (isoStr === todayKey) dayBtn.classList.add('is-today');
+    const isoStr = toLocalISODate(new Date(year, month, dayNumber));
+    dayBtn.textContent = String(dayNumber);
+    dayBtn.dataset.date = isoStr;
+    if (isoStr === todayKey) dayBtn.classList.add('is-today');
 
-        // Portfolio rule: an approved booking is RED (not green).
-        // Green is reserved for the vendor dashboard only.
-        if (approvedSet.has(isoStr)) {
-            dayBtn.classList.add('is-redmarked');
-            dayBtn.setAttribute('title', 'Date Fully Reserved');
-            dayBtn.setAttribute('aria-disabled', 'true');
-        } else if (redMarkedSet.has(isoStr)) {
-            dayBtn.classList.add('is-redmarked');
-            dayBtn.setAttribute('title', 'Date Fully Reserved');
-            dayBtn.setAttribute('aria-disabled', 'true');
-        } else if (bookedSet.has(isoStr)) {
-            dayBtn.classList.add('is-booked-by-other');
-            dayBtn.setAttribute('title', 'Booking Pending by Other User');
-            dayBtn.setAttribute('aria-disabled', 'true');
-        }
+    if (approvedSet.has(isoStr) || redMarkedSet.has(isoStr)) {
+      dayBtn.classList.add('is-redmarked');
+      dayBtn.title = 'Date Fully Reserved';
+      dayBtn.setAttribute('aria-disabled', 'true');
+    } else if (bookedSet.has(isoStr)) {
+      dayBtn.classList.add('is-booked-by-other');
+      dayBtn.title = 'Booking Pending by Other User';
+      dayBtn.setAttribute('aria-disabled', 'true');
     }
 
     dayBtn.addEventListener('click', () => {
-        if (isOut) return;
-
-        const isoStr = toLocalISODate(new Date(year, month, dayNumber));
-
-        // Reserved / unavailable states.
-        if (dayBtn.classList.contains('is-redmarked')) {
-            showVenueStatusToast({ type: 'approved', title: 'Date Fully Reserved', message: 'This date is fully reserved for this time.' });
-            return;
-        }
-
-        if (dayBtn.classList.contains('is-booked-by-other')) {
-            showVenueStatusToast({ type: 'pending', title: 'Booking Pending', message: 'Booking pending by another user for this date.' });
-            return;
-        }
-
-        // Non-red date => exact booking flow (EventType -> UserDetails -> Confirmation -> Success)
-        try {
-          localStorage.setItem('selectedEventDate', isoStr);
-          // sync time with the calendar pane being clicked
-          localStorage.setItem('selectedEventTime', calendarType);
-          localStorage.setItem('eventTime', calendarType);
-        } catch (e) {}
-
-        // ensure confirmation modal shows date/time correctly
-        // open flow
-        try { closeEventTimeModal && closeEventTimeModal(); } catch (e) {}
-        try { closeUserDetailsModal && closeUserDetailsModal(); } catch (e) {}
-        try { closeConfirmationModal && closeConfirmationModal(); } catch (e) {}
-        openEventTypeModal();
+      if (dayBtn.classList.contains('is-redmarked')) {
+        showVenueStatusToast({ type: 'approved', title: 'Date Fully Reserved', message: 'This date is fully reserved for this time.' });
+        return;
+      }
+      if (dayBtn.classList.contains('is-booked-by-other')) {
+        showVenueStatusToast({ type: 'pending', title: 'Booking Pending', message: 'Booking pending by another user for this date.' });
+        return;
+      }
+      try {
+        localStorage.setItem('selectedEventDate', isoStr);
+        localStorage.setItem('selectedEventTime', calendarType);
+        localStorage.setItem('eventTime', calendarType);
+      } catch (e) {}
+      try { closeEventTimeModal && closeEventTimeModal(); } catch (e) {}
+      try { closeUserDetailsModal && closeUserDetailsModal(); } catch (e) {}
+      try { closeConfirmationModal && closeConfirmationModal(); } catch (e) {}
+      openEventTypeModal();
     });
-    daysContainer.appendChild(dayBtn);
-}
+    fragment.appendChild(dayBtn);
+  }
+
+  daysContainer.replaceChildren(fragment);
 }
 
 function initCalendarMonthNav() {
@@ -898,9 +889,8 @@ function initCalendarMonthNav() {
 
     const doShift = async (delta) => {
       shiftMonth(calType, delta);
-      try {
-        await renderCalendarFor(calType);
-      } catch (e) {}
+      // Month data is cached; rendering is local and immediate.
+      renderCalendarFor(calType).catch(() => {});
     };
 
     if (prevBtn) {
@@ -932,30 +922,15 @@ function syncCalendarVisibility(selectedTime) {
   if (evening) evening.style.display = v === 'Evening' ? 'block' : 'none';
   if (night) night.style.display = v === 'Night' ? 'block' : 'none';
 
-  // Initial render
+  // Cached data makes this render instant when switching Morning/Evening/Night.
   renderCalendarFor(v).catch(() => {});
 
-  // Auto refresh marks every 3 seconds (old behavior back)
-  // Avoid multiple intervals
-  try {
-    if (window.__calendarAutoRefreshTimer) {
-      clearInterval(window.__calendarAutoRefreshTimer);
-    }
-  } catch (e) {}
-
-  // Capture the latest visible calendar type in the interval via closure variable.
-  // Also update immediately when user switches time.
-  window.__calendarAutoRefreshTimer = setInterval(() => {
-    const currentTime = (function () {
-      try {
-        return localStorage.getItem('eventTime') || v || 'Morning';
-      } catch (e) {
-        return v || 'Morning';
-      }
-    })();
-
-    renderCalendarFor(currentTime).catch(() => {});
-  }, 3000);
+  // Firebase realtime listeners now push vendor approve/deny changes instantly.
+  // No polling interval is needed, which keeps month/time switching fast.
+  try { if (window.__calendarAutoRefreshTimer) clearInterval(window.__calendarAutoRefreshTimer); } catch (e) {}
+  window.__calendarAutoRefreshTimer = null;
+  const uid = getSavedPortfolioType() === 'hall' ? getSavedHallUid() : getSavedBanquetUid();
+  if (uid) attachCalendarRealtimeListeners(uid).catch(() => {});
 }
 
 
@@ -1102,9 +1077,8 @@ function initEventTypeFlow() {
     closeX.addEventListener('click', () => closeEventTypeModal());
   }
 
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) closeEventTypeModal();
-  });
+  // Backdrop clicks intentionally do not close the modal; use the X button.
+  overlay.addEventListener('click', (e) => { e.stopPropagation(); });
 
   const optionBtns = overlay.querySelectorAll('.event-type-btn');
   optionBtns.forEach((btn) => {
@@ -1137,9 +1111,8 @@ function initEventTimeFlow() {
     closeX.addEventListener('click', () => closeEventTimeModal());
   }
 
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) closeEventTimeModal();
-  });
+  // Backdrop clicks intentionally do not close the modal; use the X button.
+  overlay.addEventListener('click', (e) => { e.stopPropagation(); });
 
   const eventTimeSelect = document.getElementById('eventTimeSelect');
 
@@ -1362,9 +1335,8 @@ function initConfirmationFlow() {
     closeX.addEventListener('click', () => closeConfirmationModal());
   }
 
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) closeConfirmationModal();
-  });
+  // Backdrop clicks intentionally do not close the modal; use the X button.
+  overlay.addEventListener('click', (e) => { e.stopPropagation(); });
 
   const okBtn = document.getElementById('confirmationOkBtn');
   if (okBtn) {
@@ -1660,7 +1632,28 @@ function initLocationButtonFlow() {
 }
 
 
-initPortfolio();
+async function bootstrapPortfolioPage() {
+  const overlay = document.getElementById('loadingOverlay');
+  overlay?.classList.remove('hidden');
+  document.body.classList.add('is-loading');
+
+  try {
+    // Reveal the selected venue as soon as its main record is ready.
+    // Calendar data is secondary and now hydrates in the background, so a large
+    // protected calendar payload can never delay the portfolio's first paint.
+    await initPortfolio();
+    overlay?.classList.add('hidden');
+    document.body.classList.remove('is-loading');
+    void loadCalendarData(false).catch((error) => console.error('Calendar background load failed:', error));
+  } catch (error) {
+    console.error('Portfolio bootstrap failed:', error);
+  } finally {
+    overlay?.classList.add('hidden');
+    document.body.classList.remove('is-loading');
+  }
+}
+
+bootstrapPortfolioPage();
 initEventTypeFlow();
 initEventTimeFlow();
 initCalendarMonthNav();

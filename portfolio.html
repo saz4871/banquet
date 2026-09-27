@@ -12,7 +12,16 @@
   <link rel="stylesheet" href="portfolio.css" />
 </head>
 
-<body>
+<body class="is-loading">
+
+  <!-- Premium page loader: visible before portfolio content is revealed -->
+  <div id="loadingOverlay" class="loading-overlay" aria-live="polite">
+    <div class="loading-card">
+      <div class="loader-ring"><span></span></div>
+      <div class="loading-overline">EVENT VAULT</div>
+      <div class="loading-text">Please wait, preparing your venue<span class="loading-dots"><i></i><i></i><i></i></span></div>
+    </div>
+  </div>
 <div class="hero-slider-container">
 
     <div class="hero-bg-images" aria-hidden="true" id="heroBgImageGallery"></div>
@@ -401,6 +410,9 @@
     </div>
 
   </div>
+
+
+
   <script type="module" src="portfolio.js"></script>
 </body>
 </html>

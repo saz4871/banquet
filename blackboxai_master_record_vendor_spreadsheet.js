@@ -1,5 +1,5 @@
 // Master Record (Vendor Spreadsheet style) helper
-import { decryptDeep } from './encryption/encryption.js';
+import { getCached, hasCached, subscribeCached } from './data_cache.js';
 // Intentionally self-contained-ish and imported dynamically from admin_dashboard.js
 
 export async function initMasterRecordVendorSpreadsheet() {
@@ -162,24 +162,20 @@ export async function initMasterRecordVendorSpreadsheet() {
     tbody.innerHTML = '';
     renderEmpty('Loading...');
 
-    // Requests, banquet records and hall records are all encrypted in Firebase.
-    // Decrypt each dataset first, then resolve the user's selected venue ID.
-    const [userSnap, banquetSnap, hallSnap] = await Promise.all([
-      get(ref(database, '/user/unique_user')),
-      get(ref(database, '/banquet/unique_bank')),
-      get(ref(database, '/hall/unique_hall')),
+    // All three sources are kept in one live decrypted cache. Switching back
+    // to Master Record therefore paints immediately without another download.
+    const [userData, banquetData, hallData] = await Promise.all([
+      getCached('/user/unique_user'),
+      getCached('/banquet/unique_bank'),
+      getCached('/hall/unique_hall'),
     ]);
 
-    if (!userSnap.exists()) {
+    if (!userData || !Object.keys(userData).length) {
       rows = [];
       renderEmpty('No user records found.');
       setStatusMsg('Ready');
       return;
     }
-
-    const userData = await decryptDeep(userSnap.val() || {});
-    const banquetData = banquetSnap.exists() ? await decryptDeep(banquetSnap.val() || {}) : {};
-    const hallData = hallSnap.exists() ? await decryptDeep(hallSnap.val() || {}) : {};
 
     // Resolve both banquet and hall IDs from the same master request list.
     const venueById = new Map();
@@ -331,6 +327,16 @@ export async function initMasterRecordVendorSpreadsheet() {
       monthLabelEl.textContent = `${monthNames[now.getMonth()]} ${now.getFullYear()}`;
     }
   } catch (_) {}
+
+  // Repaint only the currently visible table when Firebase pushes an update.
+  let refreshTimer = null;
+  const liveRefresh = () => {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => loadRows().catch(console.error), 120);
+  };
+  subscribeCached('/user/unique_user', liveRefresh);
+  subscribeCached('/banquet/unique_bank', liveRefresh);
+  subscribeCached('/hall/unique_hall', liveRefresh);
 
   await loadRows();
 }

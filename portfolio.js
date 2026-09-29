@@ -1110,6 +1110,38 @@ function closeUserDetailsModal() {
   overlay.setAttribute('aria-hidden', 'true');
 }
 
+
+function showBookingConflictModal(title = 'Date already reserved', message = 'This date is no longer available for booking.') {
+  let overlay = document.getElementById('bookingConflictModalOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'bookingConflictModalOverlay';
+    overlay.className = 'booking-conflict-modal-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.innerHTML = `
+      <div class="booking-conflict-modal" role="dialog" aria-modal="true" aria-labelledby="bookingConflictModalTitle">
+        <button type="button" class="booking-conflict-modal__close" aria-label="Close">&times;</button>
+        <div class="booking-conflict-modal__icon"><i class="fa-solid fa-calendar-xmark"></i></div>
+        <div class="booking-conflict-modal__eyebrow">LIVE AVAILABILITY</div>
+        <h2 id="bookingConflictModalTitle" class="booking-conflict-modal__title"></h2>
+        <p id="bookingConflictModalMessage" class="booking-conflict-modal__message"></p>
+        <div class="booking-conflict-modal__hint"><i class="fa-solid fa-shield-halved"></i><span>The reservation state was checked live. No duplicate booking was created.</span></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => e.stopPropagation());
+    overlay.querySelector('.booking-conflict-modal__close')?.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
+    });
+  }
+  const t = overlay.querySelector('#bookingConflictModalTitle');
+  const m = overlay.querySelector('#bookingConflictModalMessage');
+  if (t) t.textContent = title;
+  if (m) m.textContent = message;
+  overlay.style.display = 'flex';
+  overlay.setAttribute('aria-hidden', 'false');
+  overlay.querySelector('.booking-conflict-modal__close')?.focus({ preventScroll: true });
+}
 function openConfirmationModal() {
   const overlay = document.getElementById('confirmationModalOverlay');
   if (!overlay) return;
@@ -1543,11 +1575,10 @@ function initConfirmationFlow() {
           });
           slotClaimed = !!claim.claimed;
           if (!slotClaimed) {
-            showVenueStatusToast({
-              type: 'pending',
-              title: 'Date Just Booked',
-              message: 'Another user has already requested this date and time. Please choose another slot.'
-            });
+            showBookingConflictModal(
+              'Date just reserved',
+              'Another user secured this date and time moments ago. Please close this message and choose another available slot.'
+            );
             return;
           }
 

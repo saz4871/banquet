@@ -87,14 +87,31 @@ export async function nextBookingUid(limit = 999999) {
 export async function claimBookingSlot({ venueId, targetDate, eventTime }) {
   const path = await bookingSlotPath(venueId, targetDate, eventTime);
   const result = await runTransaction(ref(database, path), current => {
+    // 1 = customer pending, 2 = approved booking, 3 = vendor block.
+    // All states share one transaction slot, preventing same-second races.
     if (current === null || current === undefined) return 1;
-    // Existing pending or approved booking: abort this transaction.
     return undefined;
   });
-  return {
-    claimed: !!result.committed,
-    path,
-  };
+  return { claimed: !!result.committed, path, reason: result.committed ? 'claimed' : 'already_reserved' };
+}
+
+export async function claimVendorBlockSlot({ venueId, targetDate, eventTime }) {
+  const path = await bookingSlotPath(venueId, targetDate, eventTime);
+  const result = await runTransaction(ref(database, path), current => {
+    // A pending/approved customer booking wins the race.
+    if (current === null || current === undefined) return 3;
+    return undefined;
+  });
+  return { claimed: !!result.committed, path, reason: result.committed ? 'blocked' : 'already_reserved' };
+}
+
+export async function releaseVendorBlockSlot({ venueId, targetDate, eventTime }) {
+  const path = await bookingSlotPath(venueId, targetDate, eventTime);
+  const result = await runTransaction(ref(database, path), current => {
+    // Never remove a customer booking.
+    return Number(current) === 3 ? null : undefined;
+  });
+  return !!result.committed;
 }
 
 export async function setBookingSlotApproved({ venueId, targetDate, eventTime }) {
@@ -105,8 +122,10 @@ export async function setBookingSlotApproved({ venueId, targetDate, eventTime })
 
 export async function releaseBookingSlot({ venueId, targetDate, eventTime }) {
   const path = await bookingSlotPath(venueId, targetDate, eventTime);
-  await remove(ref(database, path));
-  return path;
+  const result = await runTransaction(ref(database, path), current => {
+    return Number(current) === 1 ? null : undefined;
+  });
+  return !!result.committed;
 }
 
 export async function getBookingAvailability(venueId) {

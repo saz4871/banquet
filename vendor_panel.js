@@ -3,13 +3,16 @@ import { decryptDeep, encryptDeep, stablePathKey } from "./encryption/encryption
 import { ref, get, onValue } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 import { getCached, hasCached, subscribeCached, invalidateCached, seedCached, peekCached } from './data_cache.js';
 import { getPortfolioViewCount, subscribePortfolioViewCount } from './view_tracker.js';
-import { setBookingSlotApproved, releaseBookingSlot, getBookingAvailability, subscribeBookingAvailability } from './booking_index.js';
+import { setBookingSlotApproved, releaseBookingSlot, claimVendorBlockSlot, releaseVendorBlockSlot, getBookingAvailability, subscribeBookingAvailability } from './booking_index.js';
 
 const db = database;
 
 // Avoid duplicate realtime work when the vendor page enters browser bfcache.
 let __vendorPageHidden = false;
-window.addEventListener('pagehide', () => { __vendorPageHidden = true; });
+window.addEventListener('pagehide', () => {
+  __vendorPageHidden = true;
+  if (__vendorExpiryTimer) { clearInterval(__vendorExpiryTimer); __vendorExpiryTimer = null; }
+});
 window.addEventListener('pageshow', (e) => {
   __vendorPageHidden = false;
   try {
@@ -36,6 +39,41 @@ const statusPill = document.getElementById("statusPill");
 const viewContainer = document.getElementById("viewContainer");
 let __vendorViewUnsubs = [];
 let __vendorViewCountState = new Map();
+let __vendorExpiryTimer = null;
+
+function startVendorExpiryLiveTimer(records) {
+  if (__vendorExpiryTimer) {
+    clearInterval(__vendorExpiryTimer);
+    __vendorExpiryTimer = null;
+  }
+  const update = () => {
+    const el = document.getElementById('vendorExpiryDays');
+    const dateEl = document.getElementById('vendorExpiryDate');
+    if (!el || !Array.isArray(records) || !records.length) return;
+
+    const now = new Date();
+    let minDays = Infinity;
+    let minDate = '';
+    for (const r of records) {
+      if (!r) continue;
+      const raw = r?.expiredate ?? r?.expireDate;
+      const exp = raw ? new Date(raw) : null;
+      if (!exp || Number.isNaN(exp.getTime())) continue;
+      const days = Math.ceil((exp.getTime() - now.getTime()) / 86400000);
+      if (days < minDays) {
+        minDays = days;
+        minDate = String(raw).slice(0, 10);
+      }
+    }
+    if (!Number.isFinite(minDays)) minDays = 0;
+    el.textContent = minDays < 0 ? `Expired ${Math.abs(minDays)} days ago` : `${minDays} Days Remaining`;
+    el.style.color = minDays < 0 ? 'rgba(239,68,68,0.95)' : '#22c55e';
+    if (dateEl) dateEl.textContent = `Expires: ${minDate || '—'}`;
+  };
+  update();
+  __vendorExpiryTimer = setInterval(update, 30000);
+}
+
 function clearVendorViewListeners() {
   __vendorViewUnsubs.forEach((unsub) => { try { unsub?.(); } catch (_) {} });
   __vendorViewUnsubs = [];
@@ -75,6 +113,37 @@ async function subscribeVendorViewCounters(results) {
     if (typeof unsub === 'function') __vendorViewUnsubs.push(unsub);
   }
   updateVendorViewsCard();
+}
+
+
+function showBookingConflictModal(title = 'Date already reserved', message = 'This date is no longer available for booking.') {
+  let overlay = document.getElementById('bookingConflictModalOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'bookingConflictModalOverlay';
+    overlay.className = 'booking-conflict-modal-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.innerHTML = `
+      <div class="booking-conflict-modal" role="dialog" aria-modal="true" aria-labelledby="bookingConflictModalTitle">
+        <button type="button" class="booking-conflict-modal__close" aria-label="Close">&times;</button>
+        <div class="booking-conflict-modal__icon"><i class="fa-solid fa-calendar-xmark"></i></div>
+        <div class="booking-conflict-modal__eyebrow">LIVE AVAILABILITY</div>
+        <h2 id="bookingConflictModalTitle" class="booking-conflict-modal__title"></h2>
+        <p id="bookingConflictModalMessage" class="booking-conflict-modal__message"></p>
+        <div class="booking-conflict-modal__hint"><i class="fa-solid fa-shield-halved"></i><span>The reservation state was checked live. No duplicate booking was created.</span></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => e.stopPropagation());
+    overlay.querySelector('.booking-conflict-modal__close')?.addEventListener('click', () => {
+      overlay.style.display = 'none';
+      overlay.setAttribute('aria-hidden', 'true');
+    });
+  }
+  overlay.querySelector('#bookingConflictModalTitle').textContent = title;
+  overlay.querySelector('#bookingConflictModalMessage').textContent = message;
+  overlay.style.display = 'flex';
+  overlay.setAttribute('aria-hidden', 'false');
+  overlay.querySelector('.booking-conflict-modal__close')?.focus({ preventScroll: true });
 }
 
 const navButtons = Array.from(document.querySelectorAll(".nav__item[data-view]"));
@@ -165,40 +234,44 @@ function renderView(viewKey) {
         // Home-like banquet cards
         const cardsWrapStyle = 'padding-top:16px;';
 
-        // --- Live Pending Counter (from /9/11 by venueID + status) ---
-        // PERFORMANCE: Avoid blocking UI. We fetch pending in background.
+        // --- Live Pending/Approved Counter ---
+        // IMPORTANT: drive the vendor cards from the same realtime /9/11 listener
+        // that receives a brand-new order entry. The compact availability index is
+        // still used for calendar concurrency, but it is not the source of truth
+        // for the dashboard order count.
         const vendorAssignedVenueUid = String(window.__vendor_id ?? '').trim();
 
-        // Ensure only 1 listener at a time
         if (window.__vendorPendingUnsub && typeof window.__vendorPendingUnsub === "function") {
           try { window.__vendorPendingUnsub(); } catch (e) {}
           window.__vendorPendingUnsub = null;
         }
 
-
-        // Live booking counters now come from the compact venue-specific index.
-        // No vendor dashboard needs to download/decrypt the full /9/11 collection.
         let realtimePendingCount = 0;
         let realtimeApprovedCount = 0;
 
-        const updateVendorPendingCount = (count) => {
-          const el = document.getElementById("vendorPendingCardCount");
-          if (!el) return;
-          el.textContent = String(count ?? 0);
-        };
+        const normalizeCounterValue = (v) => String(v ?? '').trim();
+        const getCounterVenueId = (r) => normalizeCounterValue(
+          r?.venueId ?? r?.venueID ?? r?.venueUid ?? r?.venueUID ??
+          r?.selectedAssetUid ?? r?.selectedAssetUID ?? r?.assetUid ?? r?.assetUID ?? ''
+        );
+        const getCounterStatus = (r) => normalizeCounterValue(
+          r?.status ?? r?.approval_status ?? r?.approvalStatus ?? r?.action ?? 'pending'
+        ).toLowerCase();
 
-        const updateVendorQuickCardValueByIndex = (cardIndex, count) => {
+        const updateVendorPendingCount = (count) => {
           const quickCards = viewContainer?.querySelector?.('.quick-cards');
           if (!quickCards) return;
           const cardEls = quickCards.querySelectorAll('.cardish');
-          if (!cardEls || !cardEls[cardIndex]) return;
-          const valueEl = cardEls[cardIndex].querySelector('div[style*="font-size:22px"]');
-          if (!valueEl) return;
-          valueEl.textContent = String(count ?? 0);
+          const valueEl = cardEls?.[0]?.querySelector('[data-stat-value="pending"]');
+          if (valueEl) valueEl.textContent = String(count ?? 0);
         };
 
         const updateVendorApprovedQuickCard = (count) => {
-          updateVendorQuickCardValueByIndex(2, count);
+          const quickCards = viewContainer?.querySelector?.('.quick-cards');
+          if (!quickCards) return;
+          const cardEls = quickCards.querySelectorAll('.cardish');
+          const valueEl = cardEls?.[2]?.querySelector('[data-stat-value="approved"]');
+          if (valueEl) valueEl.textContent = String(count ?? 0);
         };
 
         const repaintQuickCardsIfPresent = () => {
@@ -207,29 +280,29 @@ function renderView(viewKey) {
         };
 
         updateVendorPendingCount(0);
+        updateVendorApprovedQuickCard(0);
 
-        window.__vendorPendingUnsub = await subscribeBookingAvailability(vendorAssignedVenueUid, (availability) => {
+        // data_cache keeps ONE Firebase onValue listener for /9/11, decrypts the
+        // incoming snapshot once, then notifies this counter immediately. Therefore
+        // a new order entry changes the Pending card without a page refresh.
+        window.__vendorPendingUnsub = subscribeCached('/9/11', (liveData) => {
           if (__vendorPageHidden) return;
           try {
             let pending = 0;
             let approved = 0;
-            for (const slots of Object.values(availability || {})) {
-              if (!slots || typeof slots !== 'object') continue;
-              for (const state of Object.values(slots)) {
-                if (Number(state) === 1) pending++;
-                else if (Number(state) === 2) approved++;
-              }
+            for (const record of Object.values(liveData || {})) {
+              if (!record || typeof record !== 'object') continue;
+              if (getCounterVenueId(record) !== vendorAssignedVenueUid) continue;
+              const status = getCounterStatus(record);
+              if (status.includes('approved')) approved++;
+              else if (status.includes('deny') || status.includes('reject') || status === 'cancelled' || status === 'canceled') continue;
+              else pending++;
             }
             realtimePendingCount = pending;
             realtimeApprovedCount = approved;
-            updateVendorPendingCount(pending);
-            try {
-              requestAnimationFrame(() => repaintQuickCardsIfPresent());
-            } catch (_) {
-              repaintQuickCardsIfPresent();
-            }
+            repaintQuickCardsIfPresent();
           } catch (e) {
-            console.error("Vendor availability counter error:", e);
+            console.error('[vendor live order counter]', e);
           }
         });
 
@@ -478,7 +551,8 @@ function renderView(viewKey) {
             </div>
           </div>
 
-        `;
+        `;        startVendorExpiryLiveTimer(results);
+
 
 
         // Click-to-open portfolio.html (same flow as home.js)
@@ -891,6 +965,11 @@ function renderView(viewKey) {
         const { set, remove } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
 
         if (isAlreadyRed) {
+          await releaseVendorBlockSlot({
+            venueId: vendorAssignedVenueUid,
+            targetDate: isoStr,
+            eventTime: calendarType
+          });
           await remove(ref(db, nodePath));
           calendarDataCache.redAt = 0;
           redMarkedIsoSet.delete(isoStr);
@@ -898,10 +977,35 @@ function renderView(viewKey) {
           dayBtn.innerHTML = originalDayText;
           showVendorCalendarNotice('Date unblocked', 'The date is available again for new requests.', 'info');
         } else {
-          await set(ref(db, nodePath), await encryptDeep({
-            UID: vendorAssignedVenueUid,
-            reddate: reddateVal,
-          }));
+          const lockResult = await claimVendorBlockSlot({
+            venueId: vendorAssignedVenueUid,
+            targetDate: isoStr,
+            eventTime: calendarType
+          });
+
+          if (!lockResult.claimed) {
+            dayBtn.innerHTML = originalDayText;
+            showBookingConflictModal(
+              'Date already reserved',
+              'A customer booking request reached this date at the same time. The active booking is protected, so this date was not blocked.'
+            );
+            return;
+          }
+
+          try {
+            await set(ref(db, nodePath), await encryptDeep({
+              UID: vendorAssignedVenueUid,
+              reddate: reddateVal,
+            }));
+          } catch (writeError) {
+            await releaseVendorBlockSlot({
+              venueId: vendorAssignedVenueUid,
+              targetDate: isoStr,
+              eventTime: calendarType
+            }).catch(() => {});
+            throw writeError;
+          }
+
           calendarDataCache.redAt = 0;
           redMarkedIsoSet.add(isoStr);
           dayBtn.classList.add('is-redmarked');

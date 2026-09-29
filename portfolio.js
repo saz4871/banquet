@@ -6,11 +6,16 @@ import { decryptDeep, encryptDeep, stablePathKey } from "./encryption/encryption
 import { recordPortfolioView } from "./view_tracker.js";
 import { ref, get, set, onValue } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 
-// Calendar data is loaded once per portfolio visit and then rendered locally.
-// This keeps month navigation/time switching instant instead of re-reading Firebase.
+// Calendar data is loaded from a tiny per-venue availability index instead of
+// downloading/decrypting the entire /9/11 booking collection for every visitor.
+// The same slot node is transaction-protected, so it also prevents double booking.
+import { getBookingAvailability, subscribeBookingAvailability, claimBookingSlot, releaseBookingSlot, nextBookingUid } from "./booking_index.js";
+
 let calendarDataCache = null;
 let calendarDataCacheKey = '';
 let calendarDataRefreshPromise = null;
+let calendarRealtimeUnsubs = [];
+let calendarRealtimeKey = '';
 
 function normalizeCalendarIso(raw) {
   const value = String(raw ?? '').trim();
@@ -20,9 +25,6 @@ function normalizeCalendarIso(raw) {
   return m ? `${m[3]}-${m[2]}-${m[1]}` : value;
 }
 
-let calendarRealtimeUnsubs = [];
-let calendarRealtimeKey = '';
-
 function emptyCalendarData() {
   return {
     bookedByTime: { Morning: new Set(), Evening: new Set(), Night: new Set() },
@@ -31,35 +33,21 @@ function emptyCalendarData() {
   };
 }
 
-async function buildCalendarDataFromSnapshots(userValue, redValue) {
+async function buildCalendarDataFromSnapshots(availabilityValue, redValue) {
   const data = emptyCalendarData();
-  const all = userValue ? (await decryptDeep(userValue || {})) : {};
 
-  for (const k of Object.keys(all || {})) {
-    const it = all[k] || {};
-    const dbVenueId = it.venueId ?? it.venueID;
-    const portfolioType = getSavedPortfolioType();
-    const currentUid = portfolioType === 'hall' ? getSavedHallUid() : getSavedBanquetUid();
-    if (dbVenueId && currentUid && String(dbVenueId) !== String(currentUid)) continue;
-
-    const time = String(it.event_time || it.eventTime || '').trim();
-    const bucket = Object.keys(data.bookedByTime).find(x => x.toLowerCase() === time.toLowerCase());
-    if (!bucket) continue;
-
-    const date = normalizeCalendarIso(it.targetdate ?? it.targetDate ?? it.date);
+  // Compact index shape:
+  // { "2026-10-04": { Morning: 1, Evening: 2 } }
+  // 1 = pending, 2 = approved.
+  for (const [dateKey, slots] of Object.entries(availabilityValue || {})) {
+    if (!slots || typeof slots !== 'object') continue;
+    const date = normalizeCalendarIso(dateKey);
     if (!date) continue;
-
-    const status = String(it.status || it.bookingStatus || '').trim().toLowerCase();
-
-    // Pending/awaiting stays yellow. Approved becomes reserved/red.
-    // Denied/rejected is deliberately not added to either set, so it becomes available immediately.
-    if (status === 'approved' || status.includes('approved')) {
-      data.approvedByTime[bucket].add(date);
-    } else if (
-      status === 'pending' || status === 'awaiting' || status.includes('pending') ||
-      status === 'requested' || status.includes('awaiting')
-    ) {
-      data.bookedByTime[bucket].add(date);
+    for (const [timeKey, state] of Object.entries(slots)) {
+      const bucket = Object.keys(data.bookedByTime).find(x => x.toLowerCase() === String(timeKey).toLowerCase());
+      if (!bucket) continue;
+      if (Number(state) === 2) data.approvedByTime[bucket].add(date);
+      else if (Number(state) === 1) data.bookedByTime[bucket].add(date);
     }
   }
 
@@ -90,13 +78,17 @@ async function attachCalendarRealtimeListeners(uid) {
   calendarRealtimeUnsubs = [];
   calendarRealtimeKey = listenerKey;
 
-  const userRef = ref(database, '9/11');
   const redKey = await stablePathKey(uid, 'redmark-owner');
   const redRef = ref(database, `/7/8/${redKey}`);
 
-  const refreshFromLive = async (userValue, redValue) => {
+  let latestAvailability = {};
+  let latestRed = null;
+  let availabilityReady = false;
+  let redReady = false;
+  const flush = async () => {
+    if (!availabilityReady || !redReady) return;
     try {
-      calendarDataCache = await buildCalendarDataFromSnapshots(userValue, redValue);
+      calendarDataCache = await buildCalendarDataFromSnapshots(latestAvailability, latestRed);
       calendarDataCacheKey = listenerKey;
       renderVisibleCalendarImmediately();
     } catch (error) {
@@ -104,24 +96,16 @@ async function attachCalendarRealtimeListeners(uid) {
     }
   };
 
-  let latestUser = null;
-  let latestRed = null;
-  let userReady = false;
-  let redReady = false;
-  const flush = () => {
-    if (userReady && redReady) refreshFromLive(latestUser, latestRed);
-  };
-
-  calendarRealtimeUnsubs.push(onValue(userRef, snap => {
-    latestUser = snap.exists() ? snap.val() : {};
-    userReady = true;
-    flush();
-  }, err => console.warn('Calendar user realtime error:', err)));
+  calendarRealtimeUnsubs.push(await subscribeBookingAvailability(uid, value => {
+    latestAvailability = value || {};
+    availabilityReady = true;
+    void flush();
+  }));
 
   calendarRealtimeUnsubs.push(onValue(redRef, snap => {
     latestRed = snap.exists() ? snap.val() : {};
     redReady = true;
-    flush();
+    void flush();
   }, err => console.warn('Calendar red-date realtime error:', err)));
 }
 
@@ -135,23 +119,23 @@ async function loadCalendarData(force = false) {
 
   calendarDataCacheKey = cacheKey;
   calendarDataRefreshPromise = (async () => {
-    const [userSnap, redSnap] = await Promise.all([
-      get(ref(database, '9/11')),
+    const [availabilityValue, redSnap] = await Promise.all([
+      getBookingAvailability(uid),
       stablePathKey(uid, 'redmark-owner').then(key => get(ref(database, `/7/8/${key}`)))
     ]);
 
     calendarDataCache = await buildCalendarDataFromSnapshots(
-      userSnap.exists() ? userSnap.val() : {},
+      availabilityValue || {},
       redSnap.exists() ? redSnap.val() : {}
     );
 
-    // Keep the open portfolio synced without page refresh.
     await attachCalendarRealtimeListeners(uid);
     return calendarDataCache;
   })().finally(() => { calendarDataRefreshPromise = null; });
 
   return calendarDataRefreshPromise;
 }
+
 function getSavedBanquetUid() {
   try {
     return localStorage.getItem('selectedBanquetUid');
@@ -174,6 +158,76 @@ function getSavedPortfolioType() {
   } catch (e) {
     return 'banquet';
   }
+}
+
+
+function getHashVenueUid() {
+  try {
+    const hash = String(window.location.hash || '').replace(/^#/, '').trim();
+    return hash ? decodeURIComponent(hash) : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+async function resolveVenueFromUrlHash() {
+  const hashUid = getHashVenueUid();
+  if (!hashUid) return null;
+
+  // The public URL intentionally contains only the unique ID. Resolve whether
+  // it belongs to a banquet or hall without exposing the database structure in the URL.
+  const preferredType = getSavedPortfolioType();
+  const order = preferredType === 'hall' ? ['hall', 'banquet'] : ['banquet', 'hall'];
+  for (const type of order) {
+    try {
+      const record = await fetchVenueByUid(type, hashUid);
+      if (record) {
+        try {
+          localStorage.setItem('selectedPortfolioType', type);
+          if (type === 'hall') {
+            localStorage.setItem('selectedHallUid', hashUid);
+            localStorage.setItem('hallId', hashUid);
+          } else {
+            localStorage.setItem('selectedBanquetUid', hashUid);
+          }
+        } catch (_) {}
+        return { type, uid: hashUid };
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+function showDeletedVenueCalendar(portfolioType = 'banquet') {
+  const pane = document.getElementById('calendarPane');
+  if (!pane) return;
+
+  const isHall = portfolioType === 'hall';
+  const label = isHall ? 'Hall deleted' : 'Banquet deleted';
+  const message = isHall
+    ? 'This hall has been deleted and is no longer available.'
+    : 'This banquet has been deleted and is no longer available.';
+
+  pane.style.display = 'block';
+  pane.classList.add('calendar-pane--deleted');
+  pane.setAttribute('aria-label', label);
+  pane.innerHTML = `
+    <div class="calendar-deleted-state" role="status" aria-live="polite">
+      <div class="calendar-deleted-state__icon" aria-hidden="true">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div class="calendar-deleted-state__eyebrow">UNAVAILABLE</div>
+      <h2 class="calendar-deleted-state__title">${label}</h2>
+      <p class="calendar-deleted-state__message">${message}</p>
+    </div>`;
+
+  // Never leave stale realtime calendar listeners running for a deleted venue.
+  calendarRealtimeUnsubs.forEach(fn => { try { fn(); } catch (_) {} });
+  calendarRealtimeUnsubs = [];
+  calendarRealtimeKey = '';
+  calendarDataCache = null;
+  calendarDataCacheKey = '';
+  calendarDataRefreshPromise = null;
 }
 
 function safeText(v) {
@@ -294,22 +348,15 @@ async function fetchVenueByUid(portfolioType, uid) {
 }
 
 export async function initPortfolio() {
-  const portfolioType = getSavedPortfolioType();
-  const banquetUid = getSavedBanquetUid();
-  const hallUid = getSavedHallUid();
-
-  // Count one qualified view when the visitor stays on this portfolio for 5 seconds.
-  // Every new portfolio visit gets its own chance to count, including repeated visits
-  // from the same device. The counter itself is transaction-based to avoid lost updates.
-  const uidToUseForViews = portfolioType === 'hall' ? hallUid : banquetUid;
-  if (uidToUseForViews) {
-    window.setTimeout(() => {
-      void recordPortfolioView({
-        portfolioType,
-        uid: uidToUseForViews,
-      }).catch(() => {});
-    }, 5000);
-  }
+  const hashVenue = await resolveVenueFromUrlHash();
+  const rawPortfolioType = hashVenue?.type || getSavedPortfolioType();
+  const portfolioType = String(rawPortfolioType || '').trim().toLowerCase() === 'hall' ? 'hall' : 'banquet';
+  const banquetUid = portfolioType === 'banquet'
+    ? (hashVenue?.type === 'banquet' ? hashVenue.uid : getSavedBanquetUid())
+    : getSavedBanquetUid();
+  const hallUid = portfolioType === 'hall'
+    ? (hashVenue?.type === 'hall' ? hashVenue.uid : getSavedHallUid())
+    : getSavedHallUid();
 
   // UI refs
   const heroTitleEl = document.getElementById('heroTitle');
@@ -348,12 +395,29 @@ export async function initPortfolio() {
   }
 
   if (!asset) {
-    if (banquetDescEl) banquetDescEl.innerText = portfolioType === 'hall' ? 'Hall details not found.' : 'Banquet details not found.';
-    if (specialisationDescEl) specialisationDescEl.innerText = '-';
-    if (viewSeasonalEl) viewSeasonalEl.innerText = 'Rs. 0';
-    if (viewStandardEl) viewStandardEl.innerText = 'Rs. 0';
+    const deletedLabel = portfolioType === 'hall' ? 'Hall deleted' : 'Banquet deleted';
+    const deletedMessage = portfolioType === 'hall'
+      ? 'This hall has been deleted and is no longer available.'
+      : 'This banquet has been deleted and is no longer available.';
+    if (heroTitleEl) heroTitleEl.textContent = deletedLabel;
+    if (heroLocationEl) heroLocationEl.textContent = '';
+    if (banquetDescEl) banquetDescEl.innerText = deletedMessage;
+    if (specialisationDescEl) specialisationDescEl.innerText = '';
+    if (viewSeasonalEl) viewSeasonalEl.innerText = '';
+    if (viewStandardEl) viewStandardEl.innerText = '';
     if (cinematicBox) cinematicBox.style.display = 'none';
+    showDeletedVenueCalendar(portfolioType);
     return;
+  }
+
+  // Count only real, existing portfolios. A stale shared URL must never recreate
+  // a view counter after the venue has been deleted.
+  const uidToUseForViews = portfolioType === 'hall' ? hallUid : banquetUid;
+  if (uidToUseForViews) {
+    void recordPortfolioView({
+      portfolioType,
+      uid: uidToUseForViews
+    }).catch(() => {});
   }
 
   // Map fields from asset (banquet OR hall)
@@ -983,6 +1047,14 @@ function openEventTypeModal() {
 function closeEventTypeModal() {
   const overlay = document.getElementById('eventTypeModalOverlay');
   if (!overlay) return;
+  try {
+    const active = document.activeElement;
+    if (active && overlay.contains(active)) {
+      active.blur();
+      const safeTarget = document.getElementById('portfolioMain') || document.body;
+      if (safeTarget && typeof safeTarget.focus === 'function') safeTarget.focus({ preventScroll: true });
+    }
+  } catch (e) {}
   overlay.style.display = 'none';
   overlay.setAttribute('aria-hidden', 'true');
 }
@@ -1026,6 +1098,14 @@ function openUserDetailsModal() {
 function closeUserDetailsModal() {
   const overlay = document.getElementById('userDetailsModalOverlay');
   if (!overlay) return;
+  try {
+    const active = document.activeElement;
+    if (active && overlay.contains(active)) {
+      active.blur();
+      const safeTarget = document.getElementById('portfolioMain') || document.body;
+      if (safeTarget && typeof safeTarget.focus === 'function') safeTarget.focus({ preventScroll: true });
+    }
+  } catch (e) {}
   overlay.style.display = 'none';
   overlay.setAttribute('aria-hidden', 'true');
 }
@@ -1351,6 +1431,7 @@ function showSuccessPopup() {
 }
 
 function initConfirmationFlow() {
+  let bookingCompleted = false;
   const overlay = document.getElementById('confirmationModalOverlay');
   if (!overlay) return;
 
@@ -1365,6 +1446,7 @@ function initConfirmationFlow() {
   const okBtn = document.getElementById('confirmationOkBtn');
   if (okBtn) {
     okBtn.addEventListener('click', async () => {
+      bookingCompleted = false;
       // 1) close UI immediately
       closeConfirmationModal();
 
@@ -1396,40 +1478,21 @@ function initConfirmationFlow() {
         })();
 
 
-        // Incrementing UID style: 0001, 0002, 0003...
-        // Use Firebase /9/10 as the source to reduce duplication across devices.
-        // (Not a transaction; if you expect very high concurrency, we should switch to a transaction.)
+        // Reserve a unique booking UID atomically. This prevents two simultaneous
+        // clients from overwriting /9/10 with the same value.
         const LIMIT = 999999;
         let user_UID = '';
         try {
-          const currentIdSnap = await get(ref(database, '9/10'));
-          const currentIdRaw = currentIdSnap.exists() ? currentIdSnap.val() : 0;
-          const currentId = Number(currentIdRaw) || 0;
-
-          // Keep UID inside configured limit range, but also make it non-sequential by using randomness.
-          // Requirement: currentid ki range ke andar random UID generate karna.
-          const rangeSeed = currentId % LIMIT;
-          const randomWithin = Math.floor(Math.random() * (LIMIT || 1));
-          const nextId = ((rangeSeed + randomWithin) % LIMIT) + 1;
-
-          // update so next request uses next key
-          await set(ref(database, '9/10'), nextId);
-
-          user_UID = String(nextId).padStart(4, '0');
-
+          user_UID = await nextBookingUid(LIMIT);
         } catch (e) {
-          // Fallback: local counter
-          const nextIdx = (() => {
-            try {
-              const cur = parseInt(localStorage.getItem('bookingUIDCounter') || '0', 10);
-              const n = (Number.isFinite(cur) ? cur + 1 : 1);
-              localStorage.setItem('bookingUIDCounter', String(n));
-              return n;
-            } catch (e) {
-              return 1;
-            }
-          })();
-          user_UID = String(nextIdx).padStart(4, '0');
+          // Extremely unlikely fallback if the UID counter is temporarily unavailable.
+          // The actual booking slot is still protected by the atomic slot transaction below.
+          try {
+            const randomPart = crypto.randomUUID().replace(/-/g, '').slice(0, 10).toUpperCase();
+            user_UID = `B${randomPart}`;
+          } catch (_) {
+            user_UID = `B${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1e6).toString(36).toUpperCase()}`;
+          }
         }
 
 
@@ -1468,16 +1531,48 @@ function initConfirmationFlow() {
           return;
         }
 
-        // Save to: Firebase(/9/11/) using the random id as key
-        // (Firebase RTDB path: /9/11/{user_UID})
-        const userRef = ref(database, `9/11/${user_UID}`);
-        await set(userRef, await encryptDeep(payload));
+        // First claim the exact venue/date/time slot atomically.
+        // This is the critical concurrency guard: if another user wins the slot
+        // between calendar display and this click, this request is rejected.
+        let slotClaimed = false;
+        try {
+          const claim = await claimBookingSlot({
+            venueId,
+            targetDate: targetdate,
+            eventTime: event_time,
+          });
+          slotClaimed = !!claim.claimed;
+          if (!slotClaimed) {
+            showVenueStatusToast({
+              type: 'pending',
+              title: 'Date Just Booked',
+              message: 'Another user has already requested this date and time. Please choose another slot.'
+            });
+            return;
+          }
+
+          // Save the encrypted booking record only after the slot is secured.
+          const userRef = ref(database, `9/11/${user_UID}`);
+          await set(userRef, await encryptDeep(payload));
+        } catch (bookingWriteError) {
+          // Never leave a slot locked if its booking record could not be saved.
+          if (slotClaimed) {
+            try {
+              await releaseBookingSlot({ venueId, targetDate: targetdate, eventTime: event_time });
+            } catch (releaseError) {
+              console.error('Failed to release abandoned booking slot:', releaseError);
+            }
+          }
+          throw bookingWriteError;
+        }
 
         // Repaint immediately: the newly submitted request appears yellow/pending
-        // on the same calendar without waiting for the background refresh timer.
+        // through the small venue-specific availability listener.
         try {
           await renderCalendarFor(event_time || 'Morning');
         } catch (e) {}
+
+        bookingCompleted = true;
 
         // Clear pending booking state if any
         try {
@@ -1490,7 +1585,7 @@ function initConfirmationFlow() {
       // Show success popup after Done click (and after confirmation closes).
       // Small delay so user feels “Done” action -> then success animation.
       try {
-        window.setTimeout(() => showSuccessPopup(), 120);
+        if (bookingCompleted) window.setTimeout(() => showSuccessPopup(), 120);
       } catch (e) {}
     });
   }
@@ -1723,3 +1818,18 @@ document.addEventListener("keydown", (e) => {
         e.preventDefault();
     }
 });
+
+/* PORTFOLIO_PERF_OPTIMIZATION */
+(() => {
+  if ('loading' in HTMLImageElement.prototype) return;
+  const markLazy = () => document.querySelectorAll('img:not([loading])').forEach(img => {
+    const n=(img.className+' '+(img.id||'')).toLowerCase();
+    if (!/logo|icon|favicon|avatar/.test(n)) {
+      img.loading='lazy';
+      img.decoding='async';
+    }
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', markLazy, {once:true});
+  else markLazy();
+})();
+

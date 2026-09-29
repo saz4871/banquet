@@ -40,3 +40,77 @@
 
 /* ===== Premium admin action dialogs ===== */
 .admin-action-modal{position:fixed;inset:0;z-index:20000;display:grid;place-items:center;padding:20px;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .2s ease,visibility .2s ease}.admin-action-modal.is-open{opacity:1;visibility:visible;pointer-events:auto}.admin-action-backdrop{position:absolute;inset:0;background:rgba(5,7,10,.66);backdrop-filter:blur(12px)}.admin-action-card{position:relative;width:min(430px,100%);padding:30px;border:1px solid rgba(198,155,88,.28);border-radius:26px;background:linear-gradient(145deg,#1b1e24,#0f1217);box-shadow:0 35px 100px rgba(0,0,0,.52);color:#fff;transform:translateY(10px) scale(.98);transition:transform .22s ease}.admin-action-modal.is-open .admin-action-card{transform:none}.admin-action-icon{width:54px;height:54px;display:grid;place-items:center;margin-bottom:18px;border:1px solid rgba(198,155,88,.25);border-radius:17px;background:rgba(198,155,88,.1);color:#dfbd7e;font-size:23px;font-weight:900}.admin-action-eyebrow{font-size:9px;letter-spacing:.22em;font-weight:900;color:#c5a06a}.admin-action-card h2{margin:8px 0 8px;font:800 25px/1.15 Manrope,system-ui;letter-spacing:-.035em}.admin-action-card p{margin:0;color:#969da7;font-size:13px;line-height:1.65}.admin-action-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:25px}.admin-action-actions .a-btn{min-width:100px}.admin-action-secondary{background:rgba(255,255,255,.04)!important;color:#c8ccd2!important;border-color:#363b43!important}.admin-action-primary{background:linear-gradient(135deg,#dfbd7e,#b89254)!important;color:#111!important;border-color:transparent!important}.admin-action-danger .admin-action-icon{color:#ff9da9;border-color:rgba(255,113,133,.25);background:rgba(255,113,133,.08)}.admin-action-danger .admin-action-primary{background:linear-gradient(135deg,#ffb1ba,#d96573)!important}.admin-action-success .admin-action-icon{color:#a9e6c4;border-color:rgba(52,211,153,.24);background:rgba(52,211,153,.08)}
+
+
+/* High-contrast form readability */
+.vendor-management-section label,
+.vendor-management-section .form-label,
+.vendor-management-section .field-label,
+.vendor-management-section .input-label,
+.vendor-management-section .setting-label,
+.vendor-management-section p,
+.vendor-management-section h1,
+.vendor-management-section h2,
+.vendor-management-section h3,
+.vendor-management-section h4,
+.vendor-management-section span,
+.vendor-management-section strong,
+.vendor-management-section .description,
+.vendor-management-section .help-text {
+  color: #000 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+.vendor-management-section input,
+.vendor-management-section select,
+.vendor-management-section textarea {
+  color: #000 !important;
+  background-color: #fff !important;
+  -webkit-text-fill-color: #000 !important;
+  opacity: 1 !important;
+}
+.vendor-management-section input::placeholder,
+.vendor-management-section textarea::placeholder {
+  color: #555 !important;
+  opacity: 1 !important;
+}
+.vendor-management-section input:disabled,
+.vendor-management-section select:disabled {
+  color: #333 !important;
+  -webkit-text-fill-color: #333 !important;
+  opacity: 1 !important;
+}
+
+/* Fast initial portfolio rendering */
+.portfolio-media img,
+.portfolio-gallery img,
+.portfolio-image,
+.gallery-image {
+  content-visibility: auto;
+}
+
+
+
+/* Final vendor panel readability fix */
+.vendor-management-section,
+.vendor-management-section * {
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+.vendor-management-section input,
+.vendor-management-section select,
+.vendor-management-section textarea {
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  background-color: #ffffff !important;
+}
+.vendor-management-section input::placeholder,
+.vendor-management-section textarea::placeholder {
+  color: #000000 !important;
+  opacity: 1 !important;
+}
+.vendor-management-section option {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}
+

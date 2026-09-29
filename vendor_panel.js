@@ -3,8 +3,23 @@ import { decryptDeep, encryptDeep, stablePathKey } from "./encryption/encryption
 import { ref, get, onValue } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js";
 import { getCached, hasCached, subscribeCached, invalidateCached, seedCached, peekCached } from './data_cache.js';
 import { getPortfolioViewCount, subscribePortfolioViewCount } from './view_tracker.js';
+import { setBookingSlotApproved, releaseBookingSlot, getBookingAvailability, subscribeBookingAvailability } from './booking_index.js';
 
 const db = database;
+
+// Avoid duplicate realtime work when the vendor page enters browser bfcache.
+let __vendorPageHidden = false;
+window.addEventListener('pagehide', () => { __vendorPageHidden = true; });
+window.addEventListener('pageshow', (e) => {
+  __vendorPageHidden = false;
+  try {
+    if (e?.persisted && window.__vendor_authed && window.__vendor_last_view) {
+      setTimeout(() => {
+        try { renderView(window.__vendor_last_view); } catch (_) {}
+      }, 50);
+    }
+  } catch (_) {}
+});
 
 
 const overlay = document.getElementById("vendorLoginOverlay");
@@ -30,6 +45,14 @@ function updateVendorViewsCard() {
   const total = Array.from(__vendorViewCountState.values()).reduce((sum, value) => sum + (Number(value) || 0), 0);
   const el = document.getElementById('vendorViewsCount');
   if (el) el.textContent = String(total);
+}
+function updateVendorPendingQuickCard(count) {
+  const quickCards = viewContainer?.querySelector?.('.quick-cards');
+  if (!quickCards) return;
+  const cardEls = quickCards.querySelectorAll('.cardish');
+  if (!cardEls || !cardEls[0]) return;
+  const valueEl = cardEls[0].querySelector('[data-stat-value="pending"]');
+  if (valueEl) valueEl.textContent = String(count ?? 0);
 }
 async function subscribeVendorViewCounters(results) {
   clearVendorViewListeners();
@@ -65,7 +88,7 @@ function setAppLoading(show, text = 'Preparing your workspace and syncing the la
 }
 
 
-void Promise.all([getCached('/3/4'), getCached('/12/13'), getCached('/9/11')]).catch(e => console.warn('[Vendor cache warm]', e));
+void Promise.all([getCached('/3/4'), getCached('/12/13')]).catch(e => console.warn('[Vendor cache warm]', e));
 
 function setOverlayHidden(hidden) {
   overlay.setAttribute("aria-hidden", hidden ? "true" : "false");
@@ -153,9 +176,10 @@ function renderView(viewKey) {
         }
 
 
-            const normalizeStatus = (s) => String(s ?? "").toLowerCase().trim();
-
-
+        // Live booking counters now come from the compact venue-specific index.
+        // No vendor dashboard needs to download/decrypt the full /9/11 collection.
+        let realtimePendingCount = 0;
+        let realtimeApprovedCount = 0;
 
         const updateVendorPendingCount = (count) => {
           const el = document.getElementById("vendorPendingCardCount");
@@ -163,8 +187,6 @@ function renderView(viewKey) {
           el.textContent = String(count ?? 0);
         };
 
-        // Update quick-cards numbers by index:
-        // cardish[0]=Pending, cardish[2]=Approved
         const updateVendorQuickCardValueByIndex = (cardIndex, count) => {
           const quickCards = viewContainer?.querySelector?.('.quick-cards');
           if (!quickCards) return;
@@ -175,104 +197,41 @@ function renderView(viewKey) {
           valueEl.textContent = String(count ?? 0);
         };
 
-        const updateVendorPendingQuickCard = (count) => {
-          updateVendorQuickCardValueByIndex(0, count);
-        };
-
         const updateVendorApprovedQuickCard = (count) => {
           updateVendorQuickCardValueByIndex(2, count);
         };
 
-        // DOM timing issue: realtime callback DOM mount se pehle run ho sakta hai.
-        // Is helper ko use karke ham latest values ko repaint karenge jab DOM ready ho.
         const repaintQuickCardsIfPresent = () => {
-          updateVendorPendingQuickCard(realtimePendingCount);
+          updateVendorPendingCount(realtimePendingCount);
           updateVendorApprovedQuickCard(realtimeApprovedCount);
         };
 
-        // Start with 0 temporarily; but realtime listener will repaint quick-cards immediately after mount.
-        // (No separate fallback rendering for Pending/Approved will override realtime values.)
         updateVendorPendingCount(0);
 
-
-        // We will store the realtime count so quick-cards render the SAME value.
-        let realtimePendingCount = 0;
-        let realtimeApprovedCount = 0;
-
-
-        const { onValue } = await import("https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js");
-        const pendingRef = ref(db, "/9/11");
-
-        // NOTE: This pending counter currently does full-table scanning.
-        // Spreadsheet view ko fix karna priority hai (big payload). Pending view keep as-is to avoid breaking realtime logic.
-// Avoid realtime issues when navigating back/forward: ignore callbacks while page is in bfcache.
-let __vendorPageHidden = false;
-window.addEventListener('pagehide', () => { __vendorPageHidden = true; });
-window.addEventListener('pageshow', (e) => {
-  // If returning from bfcache, force a hard refresh of listeners by re-rendering the view.
-  __vendorPageHidden = false;
-  try {
-    const persisted = e?.persisted;
-    if (persisted && window.__vendor_authed && window.__vendor_last_view) {
-      setTimeout(() => {
-        try { renderView(window.__vendor_last_view); } catch (_) {}
-      }, 50);
-    }
-  } catch (_) {}
-});
-
-window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
-  if (__vendorPageHidden) return;
-  try {
-    const data = snap.exists() ? (await decryptDeep(snap.val() || {})) : {};
-    let count = 0;
-    let approvedCount = 0; // Naya variable approved count ke liye
-
-    for (const [key, r] of Object.entries(data)) {
-      if (!r) continue;
-
-      const venueId = r.venueId ?? r.venue_id ?? r.selectedAssetUid ?? r.assetUid ?? r.venueID ?? "";
-      const status = String(r.status ?? r.approval_status ?? "pending").toLowerCase().trim();
-
-      if (String(venueId) === String(vendorAssignedVenueUid)) {
-        // Pending check
-        if (status === "pending" || status.includes("pending") || status === "awaiting") {
-          count++;
-        }
-        // Approved check
-        else if (status === "approved" || status.includes("approved")) {
-          approvedCount++;
-        }
-      }
-    }
-
-
-
-    realtimePendingCount = count;
-    realtimeApprovedCount = approvedCount;
-
-    // Update UI
-    updateVendorPendingCount(count);
-
-    // Defer quick-cards repaint so that DOM is ready (fixes Approved card not reflecting recent count).
-    try {
-      requestAnimationFrame(() => {
-        repaintQuickCardsIfPresent();
-      });
-    } catch (e) {
-      repaintQuickCardsIfPresent();
-    }
-    
-  } catch (e) {
-    console.error("Vendor pending counter error:", e);
-    realtimePendingCount = 0;
-    realtimeApprovedCount = 0;
-    updateVendorPendingCount(0);
-    try {
-      repaintQuickCardsIfPresent();
-    } catch (_) {}
-  }
-});
+        window.__vendorPendingUnsub = await subscribeBookingAvailability(vendorAssignedVenueUid, (availability) => {
+          if (__vendorPageHidden) return;
+          try {
+            let pending = 0;
+            let approved = 0;
+            for (const slots of Object.values(availability || {})) {
+              if (!slots || typeof slots !== 'object') continue;
+              for (const state of Object.values(slots)) {
+                if (Number(state) === 1) pending++;
+                else if (Number(state) === 2) approved++;
+              }
+            }
+            realtimePendingCount = pending;
+            realtimeApprovedCount = approved;
+            updateVendorPendingCount(pending);
+            try {
+              requestAnimationFrame(() => repaintQuickCardsIfPresent());
+            } catch (_) {
+              repaintQuickCardsIfPresent();
+            }
+          } catch (e) {
+            console.error("Vendor availability counter error:", e);
+          }
+        });
 
 
 
@@ -480,7 +439,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
             <div class="quick-cards" style="max-width:1100px;margin:0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0 16px;">
               <div class="cardish" style="padding:14px 16px;background:rgba(0,0,0,0.25);border:1px solid rgba(251,113,133,0.25);border-radius:16px;">
                 <div style="font-weight:900;color:rgba(229,231,235,0.95);">Pending</div>
-                <div style="font-size:22px;font-weight:1000;color:rgba(251,191,36,0.95);margin-top:6px;">${pending}</div>
+                <div data-stat-value="pending" style="font-size:22px;font-weight:1000;color:rgba(251,191,36,0.95);margin-top:6px;">${pending}</div>
               </div>
               <div class="cardish" style="padding:14px 16px;background:rgba(0,0,0,0.25);border:1px solid rgba(251,113,133,0.25);border-radius:16px;">
                 <div style="font-weight:900;color:rgba(229,231,235,0.95);">Views</div>
@@ -488,7 +447,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
               </div>
               <div class="cardish" style="padding:14px 16px;background:rgba(0,0,0,0.25);border:1px solid rgba(251,113,133,0.25);border-radius:16px;">
                 <div style="font-weight:900;color:rgba(229,231,235,0.95);">Approved</div>
-                <div style="font-size:22px;font-weight:1000;color:rgba(34,197,94,0.95);margin-top:6px;">${approved}</div>
+                <div data-stat-value="approved" style="font-size:22px;font-weight:1000;color:rgba(34,197,94,0.95);margin-top:6px;">${approved}</div>
               </div>
               <div class="cardish" style="padding:14px 16px;background:rgba(0,0,0,0.25);border:1px solid rgba(251,113,133,0.25);border-radius:16px;">
                 <div style="font-weight:900;color:rgba(229,231,235,0.95);">Days Left to Expire</div>
@@ -566,7 +525,8 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
         // Read the exact Morning/Evening/Night availability configured by Admin.
         // This is decrypted before the vendor calendar is rendered, so the vendor
         // never sees time options that Admin disabled.
-        let vendorAvailability = { Morning: true, Evening: true, Night: true };
+        let vendorAvailability = { Morning: false, Evening: false, Night: false };
+        let vendorAvailabilityLoaded = false;
         try {
           const venueUid = String(vendorAssignedVenueUid ?? '').trim();
           const preferredSource = String(window.__vendor_source || localStorage.getItem('vendorSource') || '').toLowerCase();
@@ -578,7 +538,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
           let venue = null;
           for (const path of paths) {
-            const dataPath = path.startsWith('/hall/') ? '/12/13' : '/3/4';
+            const dataPath = path.startsWith('/12/13/') ? '/12/13' : '/3/4';
             const all = await getCached(dataPath);
             const key = path.split('/').pop();
             const candidate = all?.[key];
@@ -600,14 +560,15 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
                 Evening: checkboxValue(getAvailabilityValue('Evening')),
                 Night: checkboxValue(getAvailabilityValue('Night'))
               };
+              vendorAvailabilityLoaded = true;
             }
           }
         } catch (e) {
-          // Keep a safe legacy fallback if the venue record is temporarily unavailable.
-          vendorAvailability = { Morning: true, Evening: true, Night: true };
+          // Fail closed if the assigned venue or its Admin availability cannot be read.
+          vendorAvailability = { Morning: false, Evening: false, Night: false };
+          vendorAvailabilityLoaded = false;
         }
         const enabledVendorTimes = ['Morning','Evening','Night'].filter(t => vendorAvailability[t]);
-        if (!enabledVendorTimes.length) enabledVendorTimes.push('Morning');
 
         // Short-lived in-memory cache prevents the 3s visual refresh from
         // repeatedly downloading the complete user/redmark collections.
@@ -640,7 +601,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
                   role="listbox"
                   aria-label="Event Time"
                 >
-                  ${enabledVendorTimes.map(t => `<div class="calendar-dd-option" role="option" data-value="${t}" tabindex="0">${t}</div>`).join('')}
+                  ${enabledVendorTimes.length ? enabledVendorTimes.map(t => `<div class="calendar-dd-option" role="option" data-value="${t}" tabindex="0">${t}</div>`).join('') : `<div class="calendar-dd-option calendar-dd-option--disabled" role="option" aria-disabled="true">No time assigned by Admin</div>`}
                 </div>
 
                 <input type="hidden" id="bottomEventTimeSelect" value="" />
@@ -812,46 +773,18 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
           };
 
           try {
-            let all;
-            if (calendarDataCache.users && (Date.now() - calendarDataCache.usersAt) < CALENDAR_CACHE_MS) {
-              all = calendarDataCache.users;
-            } else {
-              all = await getCached('/9/11');
-              calendarDataCache.users = all;
-              calendarDataCache.usersAt = Date.now();
-            }
-
-            for (const k of Object.keys(all)) {
-              const it = all[k] || {};
-              const dbVenueId = it.venueId ?? it.venueID;
-              if (!dbVenueId || String(dbVenueId) !== String(vendorAssignedVenueUid)) continue;
-
-              if (!it.status) continue;
-              if (!it.event_time) continue;
-
-              const statusLower = String(it.status).toLowerCase();
-              const dbEventTime = String(it.event_time).trim().toLowerCase();
-              const uiCalendarType = String(calendarType).trim().toLowerCase();
-              if (dbEventTime !== uiCalendarType) continue;
-
-              const tdRaw = it.targetdate ? String(it.targetdate).trim() : '';
-              if (!tdRaw) continue;
-
-              let tdIso = '';
-              const isoMatch = tdRaw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-              if (isoMatch) tdIso = tdRaw;
-              else {
-                const dm = tdRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-                if (dm) tdIso = `${dm[3]}-${dm[2]}-${dm[1]}`;
-              }
-
-              if (!tdIso) continue;
-
-              if (statusLower === 'pending' || statusLower === 'awaiting' || statusLower.includes('pending')) bookedSet.add(tdIso);
-              else if (statusLower === 'approved' || statusLower.includes('approved')) approvedSet.add(tdIso);
+            // Compact venue-specific availability index. This replaces the old
+            // full /9/11 scan on every vendor calendar render.
+            const availability = await getBookingAvailability(vendorAssignedVenueUid);
+            for (const [dateKey, slots] of Object.entries(availability || {})) {
+              const tdIso = String(dateKey || '').trim();
+              if (!/^\d{4}-\d{2}-\d{2}$/.test(tdIso) || !slots || typeof slots !== 'object') continue;
+              const state = Number(slots[calendarType]);
+              if (state === 2) approvedSet.add(tdIso);
+              else if (state === 1) bookedSet.add(tdIso);
             }
           } catch (e) {
-            console.warn('[vendor_panel calendar] fetch fail', e);
+            console.warn('[vendor_panel calendar] availability index read failed', e);
           }
 
           try {
@@ -1038,10 +971,10 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
             const refreshVisibleCalendar = () => {
               if (window.__vendorCalendarUpdating) return;
-              const currentTime = localStorage.getItem('eventTime') || v || 'Morning';
+              const currentTime = enabledVendorTimes.includes(localStorage.getItem('eventTime')) ? localStorage.getItem('eventTime') : (enabledVendorTimes[0] || '');
               renderCalendarFor(currentTime).catch(() => {});
             };
-            window.__vendorCalendarLiveUnsubs.push(subscribeCached('/9/11', refreshVisibleCalendar));
+            window.__vendorCalendarLiveUnsubs.push(await subscribeBookingAvailability(vendorAssignedVenueUid, refreshVisibleCalendar));
             const redPath = `/7/8/${await stablePathKey(vendorAssignedVenueUid, 'redmark-owner')}`;
             window.__vendorCalendarLiveUnsubs.push(subscribeCached(redPath, refreshVisibleCalendar));
           } catch (e) {
@@ -1058,7 +991,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
 
         const setBottomDropdownValue = (v) => {
           if (!v || !enabledVendorTimes.includes(v)) return;
-          try { localStorage.setItem('eventTime', v); } catch (e) {}
+          if (enabledVendorTimes.includes(v)) { try { localStorage.setItem('eventTime', v); } catch (e) {} }
           if (hiddenInput) hiddenInput.value = v;
           if (ddLabel) ddLabel.textContent = v;
           if (ddBtn) ddBtn.setAttribute('aria-expanded', 'false');
@@ -1089,7 +1022,7 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
             const saved = localStorage.getItem('eventTime');
             return enabledVendorTimes.includes(saved) ? saved : enabledVendorTimes[0];
           } catch (e) {
-            return 'Morning';
+            return enabledVendorTimes[0] || '';
           }
         })();
 
@@ -1371,9 +1304,26 @@ window.__vendorPendingUnsub = onValue(pendingRef, async (snap) => {
             renderRows();
             setStatus('Live');
 
-            // Persist in Firebase. The realtime cache listener above will reconcile
-            // this optimistic state with the encrypted database value automatically.
+            // Persist the encrypted booking record first, then update the tiny
+            // venue/date/time availability index. The index is what public portfolio
+            // pages subscribe to, so they never need the full /9/11 collection.
             await set(ref(db, `/9/11/${rawKey}`), await encryptDeep(updatedRecord));
+            try {
+              const slotArgs = {
+                venueId: currentRecord.venueId ?? currentRecord.venueID ?? currentRecord.selectedAssetUid,
+                targetDate: currentRecord.targetdate ?? currentRecord.targetDate ?? currentRecord.date,
+                eventTime: currentRecord.event_time ?? currentRecord.eventTime,
+              };
+              if (action === 'approve') {
+                await setBookingSlotApproved(slotArgs);
+              } else {
+                await releaseBookingSlot(slotArgs);
+              }
+            } catch (indexError) {
+              // Do not roll back a successfully persisted admin decision. Log the
+              // index issue so it can be repaired from the admin migration tool.
+              console.error('[booking-index] status sync failed:', indexError);
+            }
           } catch (err) {
             console.error('Vendor request update failed:', err);
             // Roll back the optimistic paint if Firebase rejected the write.

@@ -2,6 +2,7 @@ import { encryptString, encryptDeep, decryptString, decryptDeep } from "./encryp
 import { migrateExistingDatabaseEncryption } from "./encryption/migrate.js";
 import { getCached, hasCached, subscribeCached, peekCached, invalidateCached, seedCached } from "./data_cache.js";
 import { deletePortfolioViewCounter } from "./view_tracker.js";
+import { migrateBookingAvailabilityIndex, deleteVenueBookingData } from "./booking_index.js";
 
 const ADMIN_AUTH_PATH = "5/6";
 const LEGACY_ADMIN_AUTH_PATH = "banquet/twostepauthkey";
@@ -2612,6 +2613,7 @@ async function loadHallSpreadsheetRows() {
           const { ref, remove } = await import('https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js');
           await remove(ref(database, row.deletePath));
           await deletePortfolioViewCounter({ portfolioType: 'hall', uid: row.UID });
+          await deleteVenueBookingData(row.UID);
           const nextHalls = { ...(peekCached('/12/13', {}) || {}) };
           delete nextHalls[row.deletePath.split('/').pop()];
           seedCached('/12/13', nextHalls);
@@ -2784,6 +2786,7 @@ async function loadBanquetSpreadsheetRows() {
             );
             await remove(ref(database, row.deletePath));
             await deletePortfolioViewCounter({ portfolioType: 'banquet', uid: row.UID });
+            await deleteVenueBookingData(row.UID);
             const nextBanquets = { ...(peekCached('/3/4', {}) || {}) };
             delete nextBanquets[row.deletePath.split('/').pop()];
             seedCached('/3/4', nextBanquets);
@@ -2847,6 +2850,13 @@ async function init() {
     getCached('/12/13'),
     getCached('/9/11')
   ]).catch((e) => console.error('[Event Vault] cache warm failed', e));
+
+  // One-time background migration: existing encrypted bookings are copied into
+  // the compact per-venue availability index. Future booking/status changes keep
+  // this index synchronized incrementally.
+  void migrateBookingAvailabilityIndex().catch((e) => {
+    console.error('[Booking Index] migration failed:', e);
+  });
 
   const scheduleLiveRefresh = (viewKey, loader) => {
     let timer = null;

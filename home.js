@@ -207,14 +207,14 @@ function openDetails(uid) {
     // selected banquet uid store + redirect to portfolio.html
     try { localStorage.setItem('selectedPortfolioType', 'banquet'); } catch (e) {}
     localStorage.setItem('selectedBanquetUid', uid);
-    window.location.href = 'portfolio.html';
+    window.location.href = `portfolio.html#${encodeURIComponent(uid)}`;
   } else {
     // halls -> same portfolio UI, but load hall record
     try { localStorage.setItem('selectedPortfolioType', 'hall'); } catch (e) {}
     localStorage.setItem('selectedHallUid', uid);
     // keep backward-compat if you already used hallId somewhere
     try { localStorage.setItem('hallId', uid); } catch (e) {}
-    window.location.href = 'portfolio.html';
+    window.location.href = `portfolio.html#${encodeURIComponent(uid)}`;
   }
 }
 

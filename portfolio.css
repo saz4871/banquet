@@ -398,3 +398,127 @@ body.premium-image-viewer-open{overflow:hidden;}
 .premium-image-viewer__nav[aria-disabled="true"]:hover{
   opacity:.92;
 }
+
+
+/* ===== Deleted venue calendar state ===== */
+.calendar-pane--deleted{
+  min-height:300px;
+  display:grid!important;
+  place-items:center;
+  overflow:hidden;
+}
+.calendar-pane--deleted .calendar-deleted-state{
+  width:min(620px,100%);
+  padding:42px 28px;
+  text-align:center;
+  border:1px solid rgba(214,166,63,.20);
+  border-radius:22px;
+  background:radial-gradient(circle at 50% 0%,rgba(214,166,63,.08),transparent 52%),linear-gradient(145deg,#17191e,#0d0f13);
+  box-shadow:0 24px 60px rgba(0,0,0,.24),inset 0 1px rgba(255,255,255,.025);
+}
+.calendar-deleted-state__icon{
+  width:70px;height:70px;margin:0 auto 17px;
+  display:grid;place-items:center;
+  border:1px solid rgba(218,112,129,.38);
+  border-radius:20px;
+  background:rgba(175,73,89,.12);
+  color:#ef9eab;
+  box-shadow:0 14px 35px rgba(120,38,55,.15);
+}
+.calendar-deleted-state__icon i{font-size:28px}
+.calendar-deleted-state__eyebrow{
+  margin-bottom:8px;
+  color:#9b7d4b;
+  font:800 10px/1.2 Manrope,sans-serif;
+  letter-spacing:.18em;
+}
+.calendar-deleted-state__title{
+  margin:0;
+  color:#fff;
+  font:800 24px/1.25 Manrope,sans-serif;
+}
+.calendar-deleted-state__message{
+  max-width:480px;
+  margin:10px auto 0;
+  color:#9da2aa;
+  font:600 13px/1.7 Manrope,sans-serif;
+}
+@media(max-width:600px){
+  .calendar-pane--deleted{min-height:260px;padding:14px!important}
+  .calendar-pane--deleted .calendar-deleted-state{padding:34px 18px}
+  .calendar-deleted-state__title{font-size:21px}
+}
+
+
+/* High-contrast form readability */
+.vendor-management-section label,
+.vendor-management-section .form-label,
+.vendor-management-section .field-label,
+.vendor-management-section .input-label,
+.vendor-management-section .setting-label,
+.vendor-management-section p,
+.vendor-management-section h1,
+.vendor-management-section h2,
+.vendor-management-section h3,
+.vendor-management-section h4,
+.vendor-management-section span,
+.vendor-management-section strong,
+.vendor-management-section .description,
+.vendor-management-section .help-text {
+  color: #000 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+.vendor-management-section input,
+.vendor-management-section select,
+.vendor-management-section textarea {
+  color: #000 !important;
+  background-color: #fff !important;
+  -webkit-text-fill-color: #000 !important;
+  opacity: 1 !important;
+}
+.vendor-management-section input::placeholder,
+.vendor-management-section textarea::placeholder {
+  color: #555 !important;
+  opacity: 1 !important;
+}
+.vendor-management-section input:disabled,
+.vendor-management-section select:disabled {
+  color: #333 !important;
+  -webkit-text-fill-color: #333 !important;
+  opacity: 1 !important;
+}
+
+/* Fast initial portfolio rendering */
+.portfolio-media img,
+.portfolio-gallery img,
+.portfolio-image,
+.gallery-image {
+  content-visibility: auto;
+}
+
+
+
+/* Final vendor panel readability fix */
+.vendor-management-section,
+.vendor-management-section * {
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+.vendor-management-section input,
+.vendor-management-section select,
+.vendor-management-section textarea {
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+  background-color: #ffffff !important;
+}
+.vendor-management-section input::placeholder,
+.vendor-management-section textarea::placeholder {
+  color: #000000 !important;
+  opacity: 1 !important;
+}
+.vendor-management-section option {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+}
+
